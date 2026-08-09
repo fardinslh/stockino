@@ -1,0 +1,16 @@
+/vendor/
+/node_modules/
+/dist/
+/.phpunit.cache/
+/.env
+/.env.*
+!/.env.example
+*.log
+*.sql
+.DS_Store
+Thumbs.db
+/.idea/
+/.vscode/
+/wordpress/
+/docker-data/
+

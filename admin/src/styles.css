@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+#stockino-admin-root {
+  --stockino-ink: #13233b;
+  --stockino-muted: #64748b;
+  --stockino-brand: #2563eb;
+  --stockino-canvas: #f4f7fb;
+  color: var(--stockino-ink);
+  direction: rtl;
+  font-family: Vazirmatn, Tahoma, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#stockino-admin-root * { box-sizing: border-box; }
+
+.stockino-app {
+  min-height: calc(100vh - 80px);
+  margin: 0 -20px 0 0;
+  padding: 32px clamp(18px, 4vw, 56px);
+  background:
+    radial-gradient(circle at 12% 5%, rgba(37, 99, 235, .11), transparent 28%),
+    linear-gradient(135deg, rgba(255,255,255,.8), transparent 45%),
+    var(--stockino-canvas);
+}
+
+.stockino-shell-header { display: flex; align-items: flex-start; gap: 16px; max-width: 1180px; margin: 0 auto 28px; }
+.stockino-mark { display: grid; place-items: center; width: 48px; height: 48px; flex: 0 0 auto; color: white; border-radius: 15px; background: var(--stockino-brand); box-shadow: 0 12px 30px rgba(37,99,235,.25); }
+.stockino-eyebrow { margin: 0 0 4px; direction: ltr; text-align: right; color: var(--stockino-brand); font: 600 11px/1.4 'Fira Code', monospace; letter-spacing: .09em; }
+.stockino-shell-header h1 { margin: 0; font-size: clamp(27px, 3vw, 38px); line-height: 1.25; text-wrap: balance; }
+.stockino-shell-header p:last-child { margin: 8px 0 0; color: var(--stockino-muted); font-size: 15px; text-wrap: pretty; }
+.stockino-empty-panel { display: flex; align-items: center; gap: 14px; max-width: 1180px; margin: auto; padding: 20px; border-radius: 20px; background: rgba(255,255,255,.86); box-shadow: 0 0 0 1px rgba(15,23,42,.055), 0 2px 5px rgba(15,23,42,.05), 0 18px 48px rgba(15,23,42,.055); }
+.stockino-empty-panel strong { display: block; font-size: 15px; }
+.stockino-empty-panel p { margin: 5px 0 0; color: var(--stockino-muted); }
+.stockino-pulse { width: 11px; height: 11px; flex: 0 0 auto; border-radius: 50%; background: #16a34a; box-shadow: 0 0 0 6px rgba(22,163,74,.12); }
+.stockino-skeleton { height: 260px; border-radius: 20px; background: linear-gradient(90deg,#eef2f7 25%,#fff 50%,#eef2f7 75%); background-size: 200% 100%; animation: stockino-shimmer 1.2s infinite; }
+@keyframes stockino-shimmer { to { background-position: -200% 0; } }
+@media (max-width: 782px) { .stockino-app { margin-right: -10px; padding-top: 24px; } }
+@media (prefers-reduced-motion: reduce) { .stockino-skeleton { animation: none; } }
+
