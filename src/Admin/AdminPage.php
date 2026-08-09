@@ -49,7 +49,9 @@ final class AdminPage {
 		}
 
 		$handle = 'stockino-admin';
-		wp_enqueue_script( $handle, STOCKINO_URL . 'dist/' . $entry['file'], array(), STOCKINO_VERSION, true );
+		// Hashed Vite filenames provide cache busting. A query-string version would duplicate shared ES modules across lazy chunks.
+		wp_enqueue_script( $handle, STOCKINO_URL . 'dist/' . $entry['file'], array( 'wp-i18n' ), null, true );
+		wp_set_script_translations( $handle, 'stockino', STOCKINO_PATH . 'languages' );
 		wp_localize_script(
 			$handle,
 			'stockinoSettings',

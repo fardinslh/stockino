@@ -4,6 +4,11 @@ namespace Stockino;
 
 use Stockino\Admin\AdminPage;
 use Stockino\Database\Installer;
+use Stockino\Database\StockMovementRepository;
+use Stockino\Inventory\ExternalStockTracker;
+use Stockino\Inventory\InventoryService;
+use Stockino\Inventory\ProductDtoFactory;
+use Stockino\Inventory\StockAdjustmentService;
 use Stockino\REST\RestApi;
 
 final class Plugin {
@@ -24,7 +29,16 @@ final class Plugin {
 		self::$booted = true;
 		Installer::maybe_upgrade();
 		( new AdminPage() )->register();
-		( new RestApi() )->register();
+
+		$movements = new StockMovementRepository();
+		$tracker   = new ExternalStockTracker( $movements );
+		$inventory = new InventoryService( $movements, new ProductDtoFactory() );
+		$tracker->register();
+		( new RestApi( $inventory, new StockAdjustmentService( $movements, $tracker ), $movements ) )->register();
+
+		if ( defined( 'WP_CLI' ) && WP_CLI ) {
+			( new \Stockino\Support\FixtureCommand() )->register();
+		}
 
 		do_action( 'stockino_loaded' );
 	}

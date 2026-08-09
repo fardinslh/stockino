@@ -7,5 +7,10 @@ interface StockinoSettings {
 
 interface Window {
   stockinoSettings: StockinoSettings;
+  wp?: {
+    i18n?: {
+      __: (text: string, domain?: string) => string;
+    };
+  };
 }
 

@@ -13,4 +13,4 @@ Thumbs.db
 /.vscode/
 /wordpress/
 /docker-data/
-
+/tests/artifacts/

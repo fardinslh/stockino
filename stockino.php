@@ -6,12 +6,11 @@
  * Version: 0.1.0
  * Requires at least: 6.5
  * Requires PHP: 8.2
- * Requires Plugins: woocommerce
  * Author: Stockino
  * Text Domain: stockino
  * Domain Path: /languages
  * WC requires at least: 8.5
- * WC tested up to: 10.1
+ * WC tested up to: 11.0
  */
 
 defined( 'ABSPATH' ) || exit;
