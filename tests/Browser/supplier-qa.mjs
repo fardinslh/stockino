@@ -47,6 +47,8 @@ try {
   await page.locator('.stockino-supplier-products .stockino-button-primary').click();
   await page.locator('#stockino-link-title').waitFor();
   const pickerSearch = page.locator('.stockino-link-dialog .stockino-search-field input');
+  await pickerSearch.fill('7');
+  await apiResponse('/stockino/v1/products/search');
   await pickerSearch.fill('STK-110-L');
   await apiResponse('/stockino/v1/products/search');
   await page.locator('.stockino-picker-results button').first().click();

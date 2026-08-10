@@ -149,7 +149,15 @@ $relation_update = $request(
 )->get_data();
 $assert( 3 === $relation_update['effective_lead_time_days'] && '7.250000' === $relation_update['minimum_order_quantity'], 'Relationship metadata and lead-time override update correctly.' );
 $assert( 400 === $request( 'PUT', "/stockino/v1/suppliers/{$supplier_id}/products/{$simple_id}", array( 'minimum_order_quantity' => 0 ) )->get_status(), 'Zero MOQ is rejected.' );
+$assert( 400 === $request( 'PUT', "/stockino/v1/suppliers/{$supplier_id}/products/{$simple_id}", array( 'minimum_order_quantity' => -1 ) )->get_status(), 'Negative MOQ is rejected.' );
 $assert( 400 === $request( 'PUT', "/stockino/v1/suppliers/{$supplier_id}/products/{$simple_id}", array( 'order_multiple' => -1 ) )->get_status(), 'Negative order multiple is rejected.' );
+$assert( 400 === $request( 'PUT', "/stockino/v1/suppliers/{$supplier_id}/products/{$simple_id}", array( 'minimum_order_quantity' => '0.0000001' ) )->get_status(), 'An MOQ that normalizes to zero is rejected.' );
+$assert( 400 === $request( 'PUT', "/stockino/v1/suppliers/{$supplier_id}/products/{$simple_id}", array( 'order_multiple' => '0.0000001' ) )->get_status(), 'An order multiple that normalizes to zero is rejected.' );
+$minimum_quantity = $request( 'PUT', "/stockino/v1/suppliers/{$supplier_id}/products/{$simple_id}", array( 'minimum_order_quantity' => '0.000001' ) )->get_data();
+$assert( '0.000001' === $minimum_quantity['minimum_order_quantity'], 'The smallest representable positive purchasing quantity is accepted.' );
+$maximum_quantity = $request( 'PUT', "/stockino/v1/suppliers/{$supplier_id}/products/{$simple_id}", array( 'order_multiple' => '99999999999999.999999' ) )->get_data();
+$assert( '99999999999999.999999' === $maximum_quantity['order_multiple'], 'The largest DECIMAL(20,6) purchasing quantity is accepted.' );
+$assert( 400 === $request( 'PUT', "/stockino/v1/suppliers/{$supplier_id}/products/{$simple_id}", array( 'order_multiple' => '100000000000000' ) )->get_status(), 'A purchasing quantity beyond DECIMAL(20,6) is rejected before persistence.' );
 
 $supplier_products = $request(
 	'GET',
@@ -174,6 +182,8 @@ $picker = $request(
 	)
 )->get_data();
 $assert( in_array( $variation_id, array_column( $picker['items'], 'id' ), true ) && count( $picker['items'] ) <= 20, 'Product picker search is server-side and bounded.' );
+$numeric_picker = $request( 'GET', '/stockino/v1/products/search', array( 'search' => '7' ) );
+$assert( 200 === $numeric_picker->get_status() && count( $numeric_picker->get_data()['items'] ) <= 20, 'Product picker search accepts a one-character numeric query.' );
 
 $supplier_queries = 0;
 $query_counter    = static function ( string $sql ) use ( &$supplier_queries, $supplier_table ): string {
@@ -199,6 +209,68 @@ $assert( 200 === $request( 'DELETE', "/stockino/v1/suppliers/{$supplier_id}/prod
 $stock_after     = (float) wc_get_product( $simple_id )->get_stock_quantity();
 $movements_after = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE product_id = %d', $movement_table, $simple_id ) );
 $assert( $stock_before === $stock_after && $movements_before === $movements_after, 'Supplier CRUD and relationship operations do not change stock or movements.' );
+
+$orphan_id       = 999999999;
+$stats_before    = $request( 'GET', '/stockino/v1/suppliers/stats' )->get_data();
+$detail_before   = $request( 'GET', "/stockino/v1/suppliers/{$supplier_id}" )->get_data();
+$products_before = $request( 'GET', "/stockino/v1/suppliers/{$supplier_id}/products" )->get_data();
+$now             = current_time( 'mysql', true );
+$wpdb->insert(
+	$relation_table,
+	array(
+		'supplier_id' => $supplier_id,
+		'product_id'  => $orphan_id,
+		'created_at'  => $now,
+		'updated_at'  => $now,
+	)
+);
+$stats_with_orphan    = $request( 'GET', '/stockino/v1/suppliers/stats' )->get_data();
+$detail_with_orphan   = $request( 'GET', "/stockino/v1/suppliers/{$supplier_id}" )->get_data();
+$products_with_orphan = $request( 'GET', "/stockino/v1/suppliers/{$supplier_id}/products" )->get_data();
+$without_products     = $request( 'GET', '/stockino/v1/suppliers', array( 'has_products' => 'false', 'search' => $code ) )->get_data();
+$assert( $stats_before === $stats_with_orphan, 'Supplier stats exclude orphan relationships.' );
+$assert( $detail_before['linked_product_count'] === $detail_with_orphan['linked_product_count'], 'Supplier detail counts exclude orphan relationships.' );
+$assert( $products_before['pagination']['total_items'] === $products_with_orphan['pagination']['total_items'], 'Supplier product pagination totals exclude orphan relationships.' );
+$assert( 1 === $without_products['pagination']['total_items'], 'The has-products filter ignores orphan relationships.' );
+$wpdb->delete( $relation_table, array( 'supplier_id' => $supplier_id, 'product_id' => $orphan_id ) );
+
+$temporary = new WC_Product_Simple();
+$temporary->set_name( 'Stockino deletion QA' );
+$temporary->set_status( 'publish' );
+$temporary->set_manage_stock( true );
+$temporary->set_stock_quantity( 0 );
+$temporary->set_stock_status( 'outofstock' );
+$temporary_id = $temporary->save();
+$assert( 201 === $request( 'POST', "/stockino/v1/suppliers/{$supplier_id}/products", array( 'product_id' => $temporary_id ) )->get_status(), 'An out-of-stock product can retain supplier metadata.' );
+wp_trash_post( $temporary_id );
+$assert( 1 === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE supplier_id = %d AND product_id = %d', $relation_table, $supplier_id, $temporary_id ) ), 'Trashing a product preserves its supplier relationship.' );
+wp_untrash_post( $temporary_id );
+wp_update_post( array( 'ID' => $temporary_id, 'post_status' => 'draft' ) );
+$assert( 1 === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE supplier_id = %d AND product_id = %d', $relation_table, $supplier_id, $temporary_id ) ), 'Drafting a product preserves its supplier relationship.' );
+wp_update_post( array( 'ID' => $temporary_id, 'post_status' => 'private' ) );
+wp_delete_post( $temporary_id, true );
+$assert( 0 === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE product_id = %d', $relation_table, $temporary_id ) ), 'Permanently deleting a simple product removes only its supplier relationships.' );
+
+$parent = new WC_Product_Variable();
+$parent->set_name( 'Stockino variable deletion QA' );
+$parent_id     = $parent->save();
+$variation_ids = array();
+foreach ( array( 'A', 'B' ) as $label ) {
+	$variation = new WC_Product_Variation();
+	$variation->set_parent_id( $parent_id );
+	$variation->set_name( "Stockino variation {$label}" );
+	$variation_ids[] = $variation->save();
+}
+$request( 'POST', "/stockino/v1/suppliers/{$supplier_id}/products", array( 'product_id' => $parent_id ) );
+foreach ( $variation_ids as $child_id ) {
+	$request( 'POST', "/stockino/v1/suppliers/{$supplier_id}/products", array( 'product_id' => $child_id ) );
+}
+wp_delete_post( $variation_ids[0], true );
+$remaining_ids = array_map( 'intval', $wpdb->get_col( $wpdb->prepare( 'SELECT product_id FROM %i WHERE supplier_id = %d', $relation_table, $supplier_id ) ) );
+$assert( ! in_array( $variation_ids[0], $remaining_ids, true ) && in_array( $parent_id, $remaining_ids, true ) && in_array( $variation_ids[1], $remaining_ids, true ), 'Deleting one variation removes its exact relationship without affecting its parent or sibling.' );
+wp_delete_post( $parent_id, true );
+$remaining_ids = array_map( 'intval', $wpdb->get_col( $wpdb->prepare( 'SELECT product_id FROM %i WHERE supplier_id = %d', $relation_table, $supplier_id ) ) );
+$assert( ! in_array( $parent_id, $remaining_ids, true ) && ! in_array( $variation_ids[1], $remaining_ids, true ), 'Deleting a variable parent removes its exact and child-variation relationships.' );
 
 $movement_rows = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', $movement_table ) );
 update_option( 'stockino_db_version', '1.0.0' );

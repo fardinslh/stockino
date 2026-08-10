@@ -53,6 +53,26 @@ final class SupplierProductRepository {
 		) > 0;
 	}
 
+	/** @param array<int,int> $product_ids */
+	public function delete_for_product_ids( array $product_ids ): int {
+		global $wpdb;
+		$deleted = 0;
+		$ids     = array_values( array_unique( array_filter( array_map( 'absint', $product_ids ) ) ) );
+
+		foreach ( array_chunk( $ids, 100 ) as $chunk ) {
+			$placeholders = implode( ', ', array_fill( 0, count( $chunk ), '%d' ) );
+			$sql          = "DELETE FROM %i WHERE product_id IN ({$placeholders})";
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Placeholders are generated from a fixed token and all values are prepared.
+			$result = $wpdb->query( $wpdb->prepare( $sql, array_merge( array( $this->table() ), $chunk ) ) );
+			if ( false === $result ) {
+				throw new \RuntimeException( 'relation_delete_failed' );
+			}
+			$deleted += (int) $result;
+		}
+
+		return $deleted;
+	}
+
 	/** @return array<string,mixed>|null */
 	public function find( int $supplier_id, int $product_id ): ?array {
 		global $wpdb;
@@ -84,6 +104,7 @@ final class SupplierProductRepository {
 	/** @return array{items:array<int,array<string,mixed>>,pagination:array<string,int>} */
 	private function paginate( string $where, array $values, int $page, int $per_page, bool $include_supplier = false ): array {
 		global $wpdb;
+		$where     = "({$where}) AND p.post_type IN ('product', 'product_variation')";
 		$count_sql = "SELECT COUNT(*) FROM %i sp INNER JOIN %i p ON p.ID = sp.product_id WHERE {$where}";
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- SQL contains fixed clauses and prepared values only.
 		$total  = (int) $wpdb->get_var( $wpdb->prepare( $count_sql, array_merge( array( $this->table(), $wpdb->posts ), $values ) ) );

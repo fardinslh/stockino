@@ -44,9 +44,13 @@ final class SupplierRepository {
 		global $wpdb;
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
-				'SELECT s.*, COUNT(sp.id) linked_product_count FROM %i s LEFT JOIN %i sp ON sp.supplier_id = s.id WHERE s.id = %d GROUP BY s.id',
+				"SELECT s.*, COUNT(p.ID) linked_product_count FROM %i s
+				LEFT JOIN %i sp ON sp.supplier_id = s.id
+				LEFT JOIN %i p ON p.ID = sp.product_id AND p.post_type IN ('product', 'product_variation')
+				WHERE s.id = %d GROUP BY s.id",
 				$this->table(),
 				$this->relations_table(),
+				$wpdb->posts,
 				$id
 			),
 			ARRAY_A
@@ -88,15 +92,17 @@ final class SupplierRepository {
 			$values[] = $status;
 		}
 		if ( null !== $has_products ) {
-			$where[]  = $has_products ? 'EXISTS (SELECT 1 FROM %i hp WHERE hp.supplier_id = s.id)' : 'NOT EXISTS (SELECT 1 FROM %i hp WHERE hp.supplier_id = s.id)';
-			$values[] = $this->relations_table();
+			$predicate = "SELECT 1 FROM %i hp INNER JOIN %i hp_post ON hp_post.ID = hp.product_id AND hp_post.post_type IN ('product', 'product_variation') WHERE hp.supplier_id = s.id";
+			$where[]   = $has_products ? "EXISTS ({$predicate})" : "NOT EXISTS ({$predicate})";
+			$values[]  = $this->relations_table();
+			$values[]  = $wpdb->posts;
 		}
 		$where_sql = implode( ' AND ', $where );
 		$count_sql = "SELECT COUNT(*) FROM %i s WHERE {$where_sql}";
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- SQL contains fixed clauses and prepared values only.
 		$total     = (int) $wpdb->get_var( $wpdb->prepare( $count_sql, array_merge( array( $this->table() ), $values ) ) );
-		$list_sql  = "SELECT s.*, COUNT(sp.id) linked_product_count FROM %i s LEFT JOIN %i sp ON sp.supplier_id = s.id WHERE {$where_sql} GROUP BY s.id ORDER BY s.name ASC, s.id ASC LIMIT %d OFFSET %d";
-		$list_args = array_merge( array( $this->table(), $this->relations_table() ), $values, array( $per_page, ( $page - 1 ) * $per_page ) );
+		$list_sql  = "SELECT s.*, COUNT(p.ID) linked_product_count FROM %i s LEFT JOIN %i sp ON sp.supplier_id = s.id LEFT JOIN %i p ON p.ID = sp.product_id AND p.post_type IN ('product', 'product_variation') WHERE {$where_sql} GROUP BY s.id ORDER BY s.name ASC, s.id ASC LIMIT %d OFFSET %d";
+		$list_args = array_merge( array( $this->table(), $this->relations_table(), $wpdb->posts ), $values, array( $per_page, ( $page - 1 ) * $per_page ) );
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- SQL contains fixed clauses and prepared values only.
 		$rows = $wpdb->get_results( $wpdb->prepare( $list_sql, $list_args ), ARRAY_A );
 
@@ -117,10 +123,12 @@ final class SupplierRepository {
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT SUM(status = 'active') active_suppliers, SUM(status = 'inactive') inactive_suppliers,
-				(SELECT COUNT(*) FROM %i) linked_products,
-				(SELECT COUNT(DISTINCT product_id) FROM %i) products_with_suppliers FROM %i",
+				(SELECT COUNT(*) FROM %i sp INNER JOIN %i p ON p.ID = sp.product_id AND p.post_type IN ('product', 'product_variation')) linked_products,
+				(SELECT COUNT(DISTINCT sp.product_id) FROM %i sp INNER JOIN %i p ON p.ID = sp.product_id AND p.post_type IN ('product', 'product_variation')) products_with_suppliers FROM %i",
 				$this->relations_table(),
+				$wpdb->posts,
 				$this->relations_table(),
+				$wpdb->posts,
 				$this->table()
 			),
 			ARRAY_A

@@ -5,6 +5,7 @@ import { supplierApi } from '@/lib/api';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import type { InventoryProduct } from '@/types/inventory';
 import type { RelationshipInput, SupplierProduct } from '@/types/suppliers';
+import { shouldSearchProducts } from './productSearch';
 
 interface Props { relation: SupplierProduct | null; open: boolean; pending: boolean; error: string; onClose: () => void; onSubmit: (productId: number, input: RelationshipInput) => void }
 const empty: RelationshipInput = { supplier_sku: '', lead_time_days: '', minimum_order_quantity: '', order_multiple: '', notes: '' };
@@ -15,7 +16,8 @@ export const ProductLinkDialog: React.FC<Props> = ({ relation, open, pending, er
   const [selected, setSelected] = useState<InventoryProduct | null>(null);
   const [form, setForm] = useState<RelationshipInput>(empty);
   const debounced = useDebouncedValue(search, 300);
-  const products = useQuery({ queryKey: ['supplierProductSearch', debounced], queryFn: () => supplierApi.searchProducts(debounced), enabled: open && !relation && debounced.trim().length >= 2 });
+  const searchEnabled = shouldSearchProducts(debounced);
+  const products = useQuery({ queryKey: ['supplierProductSearch', debounced], queryFn: () => supplierApi.searchProducts(debounced), enabled: open && !relation && searchEnabled });
   useEffect(() => {
     setSearch(''); setSelected(null);
     setForm(relation ? { supplier_sku: relation.supplier_sku ?? '', lead_time_days: relation.lead_time_days?.toString() ?? '', minimum_order_quantity: relation.minimum_order_quantity ?? '', order_multiple: relation.order_multiple ?? '', notes: relation.notes ?? '' } : empty);
@@ -32,7 +34,7 @@ export const ProductLinkDialog: React.FC<Props> = ({ relation, open, pending, er
           {!relation && <div className="stockino-picker">
             <label className="stockino-search-field"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="جستجو با نام، SKU یا شناسه محصول" aria-label="جستجوی محصول" /></label>
             {products.isFetching && <p className="stockino-picker-state">در حال جستجو…</p>}
-            {!products.isFetching && debounced.length >= 2 && products.data?.items.length === 0 && <p className="stockino-picker-state">محصولی پیدا نشد.</p>}
+            {!products.isFetching && searchEnabled && products.data?.items.length === 0 && <p className="stockino-picker-state">محصولی پیدا نشد.</p>}
             <div className="stockino-picker-results">{products.data?.items.map((product) => <button className={selected?.id === product.id ? 'is-selected' : ''} type="button" key={product.id} onClick={() => setSelected(product)}><PackageSearch size={18} /><span><strong>{product.name}</strong><small>{typeLabel[product.type]} · <bdi>#{product.id}</bdi></small></span><code dir="ltr">{product.sku || '—'}</code></button>)}</div>
           </div>}
           {(relation || selected) && <div className="stockino-selected-product"><strong>{relation?.product?.name ?? selected?.name}</strong><code dir="ltr">{relation?.product?.sku || selected?.sku || '—'}</code></div>}

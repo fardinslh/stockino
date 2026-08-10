@@ -122,12 +122,9 @@ final class SupplierValidator {
 					$data[ $field ] = null;
 					continue;
 				}
-				if ( ! is_numeric( $value ) || (float) $value <= 0 ) {
-					return $this->error( 'stockino_invalid_' . $field, __( 'Order quantities must be positive numbers.', 'stockino' ) );
-				}
-				$decimal = wc_format_decimal( $value, 6, false );
-				if ( '' === $decimal || strlen( ltrim( $decimal, '-' ) ) > 21 ) {
-					return $this->error( 'stockino_invalid_' . $field, __( 'Order quantity is outside the supported range.', 'stockino' ) );
+				$decimal = PurchasingQuantity::normalize( $value );
+				if ( null === $decimal ) {
+					return $this->error( 'stockino_invalid_' . $field, __( 'Order quantities must be positive values within DECIMAL(20,6) precision.', 'stockino' ) );
 				}
 				$data[ $field ] = $decimal;
 			}

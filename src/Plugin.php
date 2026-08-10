@@ -14,6 +14,7 @@ use Stockino\Inventory\ProductDtoFactory;
 use Stockino\Inventory\StockAdjustmentService;
 use Stockino\REST\RestApi;
 use Stockino\REST\SupplierRestApi;
+use Stockino\Suppliers\SupplierProductCleanup;
 use Stockino\Suppliers\SupplierProductService;
 use Stockino\Suppliers\SupplierService;
 use Stockino\Suppliers\SupplierValidator;
@@ -44,9 +45,11 @@ final class Plugin {
 		( new RestApi( $inventory, new StockAdjustmentService( $movements, $tracker ), $movements ) )->register();
 		$validator = new SupplierValidator();
 		$suppliers = new SupplierRepository();
+		$relations = new SupplierProductRepository();
+		( new SupplierProductCleanup( $relations ) )->register();
 		( new SupplierRestApi(
 			new SupplierService( $suppliers, $validator ),
-			new SupplierProductService( new SupplierProductRepository(), $suppliers, $validator ),
+			new SupplierProductService( $relations, $suppliers, $validator ),
 			$inventory
 		) )->register();
 
