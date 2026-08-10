@@ -7,6 +7,7 @@ use Stockino\Database\Installer;
 use Stockino\Database\StockMovementRepository;
 use Stockino\Inventory\ExternalStockTracker;
 use Stockino\Inventory\InventoryService;
+use Stockino\Inventory\InventoryQuery;
 use Stockino\Inventory\ProductDtoFactory;
 use Stockino\Inventory\StockAdjustmentService;
 use Stockino\REST\RestApi;
@@ -32,7 +33,7 @@ final class Plugin {
 
 		$movements = new StockMovementRepository();
 		$tracker   = new ExternalStockTracker( $movements );
-		$inventory = new InventoryService( $movements, new ProductDtoFactory() );
+		$inventory = new InventoryService( $movements, new ProductDtoFactory(), new InventoryQuery() );
 		$tracker->register();
 		( new RestApi( $inventory, new StockAdjustmentService( $movements, $tracker ), $movements ) )->register();
 

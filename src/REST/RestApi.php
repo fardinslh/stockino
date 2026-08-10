@@ -222,11 +222,13 @@ final class RestApi {
 		$stream = fopen( 'php://temp/maxmemory:5242880', 'w+' );
 		fwrite( $stream, "\xEF\xBB\xBF" );
 		fputcsv( $stream, array( 'product_id', 'variation_id', 'product_name', 'sku', 'product_type', 'stock_quantity', 'stock_status', 'low_stock_amount' ) );
-		$page = 1;
+		$page  = 1;
+		$total = null;
 		do {
 			$params['page']     = $page;
 			$params['per_page'] = 100;
-			$result             = $this->inventory->list( $params );
+			$result             = $this->inventory->list( $params, $total );
+			$total              = $result['total_items'];
 			foreach ( $result['items'] as $item ) {
 				fputcsv(
 					$stream,

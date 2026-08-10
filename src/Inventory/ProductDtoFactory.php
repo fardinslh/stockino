@@ -19,6 +19,10 @@ final class ProductDtoFactory {
 		$edit_id  = $is_variation ? $parent_id : $id;
 		$edit_url = get_edit_post_link( $edit_id, 'raw' );
 
+		$stock_quantity  = null !== $product->get_stock_quantity() ? (float) $product->get_stock_quantity() : null;
+		$low_amount      = (float) wc_get_low_stock_amount( $product );
+		$no_stock_amount = (float) get_option( 'woocommerce_notify_no_stock_amount', 0 );
+
 		return array(
 			'id'                   => $id,
 			'parent_id'            => $parent_id,
@@ -30,11 +34,11 @@ final class ProductDtoFactory {
 			'manage_stock'         => $product->managing_stock(),
 			'can_adjust'           => $product->managing_stock() && $product->get_stock_managed_by_id() === $id,
 			'stock_managed_by_id'  => $product->get_stock_managed_by_id(),
-			'stock_quantity'       => null !== $product->get_stock_quantity() ? (float) $product->get_stock_quantity() : null,
+			'stock_quantity'       => $stock_quantity,
 			'stock_status'         => $product->get_stock_status(),
 			'backorders'           => $product->get_backorders(),
-			'low_stock_amount'     => (float) wc_get_low_stock_amount( $product ),
-			'is_low_stock'         => $product->managing_stock() && null !== $product->get_stock_quantity() && (float) $product->get_stock_quantity() <= (float) wc_get_low_stock_amount( $product ) && (float) $product->get_stock_quantity() > 0,
+			'low_stock_amount'     => $low_amount,
+			'is_low_stock'         => $product->managing_stock() && LowStockDefinition::is_low( $stock_quantity, $low_amount, $no_stock_amount ),
 			'category_names'       => $categories[ $is_variation ? $parent_id : $id ] ?? array(),
 			'permalink'            => $product->get_permalink(),
 			'edit_url'             => $edit_url ? $edit_url : '',

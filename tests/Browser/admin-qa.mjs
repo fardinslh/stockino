@@ -34,6 +34,34 @@ try {
   const rows = await page.locator('.stockino-table tbody tr').count();
   if (rows < 1) failures.push('inventory: no rows rendered');
 
+  const inventoryResponse = () => page.waitForResponse((response) => {
+    const url = decodeURIComponent(response.url());
+    return url.includes('/stockino/v1/inventory')
+      && !url.includes('/inventory/stats')
+      && !url.includes('/inventory/filters')
+      && !url.includes('/inventory/export')
+      && response.request().method() === 'GET'
+      && response.status() === 200;
+  });
+  const filters = page.locator('.stockino-filter-row select');
+  await Promise.all([inventoryResponse(), filters.nth(1).selectOption('variation')]);
+  await Promise.all([inventoryResponse(), filters.nth(2).selectOption('stockino-electronics')]);
+  await Promise.all([inventoryResponse(), filters.nth(3).selectOption('true')]);
+  await Promise.all([inventoryResponse(), page.locator('.stockino-check-label input').check()]);
+  await page.locator('.stockino-table tbody tr').first().waitFor();
+  const filteredRows = await page.locator('.stockino-table tbody tr').count();
+  if (filteredRows < 1 || filteredRows > 20) failures.push(`filters: unexpected row count ${filteredRows}`);
+
+  const download = page.waitForEvent('download');
+  await page.locator('.stockino-toolbar-actions .stockino-button-secondary').click();
+  const csv = await download;
+  if (!csv.suggestedFilename().endsWith('.csv')) failures.push(`csv: unexpected filename ${csv.suggestedFilename()}`);
+
+  await page.locator('.stockino-table tbody input[type=checkbox]').first().check();
+  await page.locator('.stockino-toolbar-actions .stockino-button-primary').click();
+  await page.locator('#stockino-bulk-title').waitFor();
+  await page.locator('.stockino-dialog .stockino-icon-button').click();
+
   await page.locator('.stockino-text-action:not([disabled])').first().click();
   await page.locator('#stockino-adjust-title').waitFor();
   await page.locator('.stockino-dialog .stockino-icon-button').click();

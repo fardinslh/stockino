@@ -27,4 +27,21 @@ final class StockMathTest extends TestCase {
 		$this->expectException( InvalidArgumentException::class );
 		StockMath::calculate( 10.0, 'replace', 12.0 );
 	}
+
+	public function test_reconstructs_atomic_delta_ledger_from_returned_stock(): void {
+		self::assertSame(
+			array( 'before' => 12.0, 'after' => 17.0, 'delta' => 5.0 ),
+			StockMath::movement_from_delta_result( 17.0, 5.0 )
+		);
+	}
+
+	public function test_reconstructed_delta_does_not_use_a_stale_pre_read(): void {
+		// Another writer moved stock from the stale read of 10 to 12 before our atomic +5 completed.
+		self::assertSame( 12.0, StockMath::movement_from_delta_result( 17.0, 5.0 )['before'] );
+	}
+
+	public function test_rejects_zero_effective_delta(): void {
+		$this->expectException( InvalidArgumentException::class );
+		StockMath::movement_from_delta_result( 10.0, 0.0 );
+	}
 }

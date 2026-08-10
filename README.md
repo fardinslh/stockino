@@ -29,9 +29,12 @@ Open `http://localhost:8088/wp-admin/admin.php?page=stockino`. Docker is develop
 Generate a representative catalog and run the repeatable API smoke suite:
 
 ```bash
-docker compose run --rm wpcli wp stockino fixtures --count=100
+docker compose run --rm wpcli wp stockino fixtures --count=2000
 docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/inventory.php
+docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/performance.php
 ```
+
+Fixture generation is permitted only when `wp_get_environment_type()` is exactly `local` or `development`; staging, production, and unknown/default environments are rejected. `--start=<index>` supports extending an existing development catalog without reusing fixture SKUs.
 
 ## Architecture
 
@@ -47,13 +50,17 @@ docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smo
 
 The table `{prefix}stockino_stock_movements` stores `product_id`, optional `variation_id`, movement/reason identifiers, before/delta/after decimal quantities, optional reference, actor, note/metadata, and UTC creation time. It has a primary key plus targeted product/date, variation/date, movement-type, and date indexes.
 
-Simple products, variable parents, and variations remain distinct rows. A variation that inherits parent stock is visible but cannot be adjusted independently. Low stock uses `wc_get_low_stock_amount()`, which resolves product-level and global WooCommerce thresholds. Inventory mutation always uses `wc_update_product_stock()`; product stock is never written through raw SQL.
+Simple products, variable parents, and variations remain distinct rows. A variation that inherits parent stock is visible but cannot be adjusted independently. Low stock follows WooCommerce's full definition: a variation's own threshold, then its parent's threshold, then the global threshold, with quantity strictly above `woocommerce_notify_no_stock_amount`. The DTO, list filter, and summary statistics share those bounds. Inventory mutation always uses `wc_update_product_stock()`; product stock is never written through raw SQL.
 
-Delta updates use WooCommerce's atomic `increase`/`decrease` operation. Set updates carry `expected_current` and return HTTP 409 when the dialog is stale. Negative results are accepted only when WooCommerce permits backorders. Bulk delta adjustment is capped at 100 IDs and returns separate `updated` and `failed` arrays.
+Delta updates use WooCommerce's atomic `increase`/`decrease` operation. The ledger derives `before = returned_after - effective_delta`, so a concurrent change between the initial validation read and WooCommerce's atomic update cannot corrupt movement arithmetic. Zero deltas are rejected. Set updates carry `expected_current` and return HTTP 409 when the dialog is stale; no-op sets are rejected. Negative results are accepted only when WooCommerce permits backorders. Bulk delta adjustment is capped at 100 IDs and returns separate `updated` and `failed` arrays.
 
 External changes made through supported WooCommerce stock APIs are captured from the product/variation before/after stock hooks. Stockino uses an in-request, per-product suppression counter around its own updates, preventing duplicate manual and external ledger rows. Direct database/meta writes by other code cannot be tracked reliably and are deliberately not guessed.
 
-Inventory listing uses WooCommerce product queries and batched category/latest-movement loading. The low-stock filter and summary totals use bounded read-only aggregation over WooCommerce's product lookup table because the public product query cannot express global-or-product threshold comparisons. No stock mutation uses SQL. Exact SKU and product-ID search are supported; partial SKU scanning is intentionally not performed.
+Inventory listing runs one read-only SQL query that returns only the current page's IDs with `LIMIT`/`OFFSET`, plus a separate `COUNT(DISTINCT ...)` query for pagination. Search, parent-aware category, product type, stock status, manage-stock, and low-stock constraints are combined before pagination. Only those bounded IDs are hydrated through WooCommerce CRUD objects; categories and latest movements are loaded in batches. CSV calculates the matching count on its first page and reuses it for later pages. No stock mutation uses SQL. Exact SKU and product-ID search are supported; partial SKU scanning is intentionally not performed.
+
+### Catalog performance check
+
+On 2026-08-10, the local Docker check used 2,000 parent products plus 570 variation rows. `page=1&per_page=20&manage_stock=true&low_stock=true` returned 20 of 443 matches in 139.37 ms, with a measured PHP peak-memory delta of 0.00 MiB. The response hydrated 20 products; the remaining matching IDs stayed in the database. This is a development measurement, not a production latency guarantee.
 
 ## REST API
 

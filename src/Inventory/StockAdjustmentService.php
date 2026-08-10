@@ -41,6 +41,14 @@ final class StockAdjustmentService {
 		if ( ! AdjustmentReason::is_valid( $reason ) ) {
 			return new WP_Error( 'stockino_invalid_reason', __( 'Choose a valid adjustment reason.', 'stockino' ), array( 'status' => 400 ) );
 		}
+		if ( ! in_array( $mode, array( 'set', 'delta' ), true ) || ! is_finite( $quantity ) ) {
+			return new WP_Error( 'stockino_invalid_adjustment', __( 'Enter a valid stock adjustment.', 'stockino' ), array( 'status' => 400 ) );
+		}
+
+		$effective_quantity = (float) wc_stock_amount( $quantity );
+		if ( 'delta' === $mode && 0.0 === $effective_quantity ) {
+			return new WP_Error( 'stockino_zero_delta', __( 'Enter a non-zero stock adjustment.', 'stockino' ), array( 'status' => 400 ) );
+		}
 
 		$current = $product->get_stock_quantity();
 		if ( null === $current ) {
@@ -59,9 +67,12 @@ final class StockAdjustmentService {
 		}
 
 		try {
-			$calculation = StockMath::calculate( (float) $current, $mode, $quantity );
+			$calculation = StockMath::calculate( (float) $current, $mode, $effective_quantity );
 		} catch ( \InvalidArgumentException $exception ) {
 			return new WP_Error( 'stockino_invalid_adjustment', __( 'Enter a valid stock adjustment.', 'stockino' ), array( 'status' => 400 ) );
+		}
+		if ( 'set' === $mode && (float) $current === $calculation['after'] ) {
+			return new WP_Error( 'stockino_no_stock_change', __( 'The requested quantity is already the current stock.', 'stockino' ), array( 'status' => 400 ) );
 		}
 
 		if ( $calculation['after'] < 0 && ! $product->backorders_allowed() ) {
@@ -71,10 +82,10 @@ final class StockAdjustmentService {
 		$this->tracker?->suppress( $product_id );
 		try {
 			if ( 'delta' === $mode ) {
-				$operation = $quantity >= 0 ? 'increase' : 'decrease';
-				$updated   = wc_update_product_stock( $product, abs( $quantity ), $operation );
+				$operation = $effective_quantity > 0 ? 'increase' : 'decrease';
+				$updated   = wc_update_product_stock( $product, abs( $effective_quantity ), $operation );
 			} else {
-				$updated = wc_update_product_stock( $product, $quantity, 'set' );
+				$updated = wc_update_product_stock( $product, $effective_quantity, 'set' );
 			}
 		} finally {
 			$this->tracker?->release( $product_id );
@@ -85,6 +96,13 @@ final class StockAdjustmentService {
 		}
 
 		$after = (float) $updated;
+		$entry = 'delta' === $mode
+			? StockMath::movement_from_delta_result( $after, $effective_quantity )
+			: array(
+				'before' => (float) $current,
+				'after'  => $after,
+				'delta'  => $after - (float) $current,
+			);
 		try {
 			$movement_id = $this->movements->insert(
 				array(
@@ -92,11 +110,14 @@ final class StockAdjustmentService {
 					'variation_id'    => $product->is_type( 'variation' ) ? $product->get_id() : null,
 					'movement_type'   => 'manual_adjustment',
 					'reason'          => $reason,
-					'quantity_before' => (float) $current,
-					'quantity_delta'  => $after - (float) $current,
-					'quantity_after'  => $after,
+					'quantity_before' => $entry['before'],
+					'quantity_delta'  => $entry['delta'],
+					'quantity_after'  => $entry['after'],
 					'note'            => '' !== $note ? $note : null,
-					'metadata'        => array( 'mode' => $mode ),
+					'metadata'        => array(
+						'mode'               => $mode,
+						'requested_quantity' => $quantity,
+					),
 				)
 			);
 		} catch ( \RuntimeException $exception ) {
@@ -114,9 +135,9 @@ final class StockAdjustmentService {
 		return array(
 			'product_id'      => $product->get_id(),
 			'movement_id'     => $movement_id,
-			'quantity_before' => (float) $current,
-			'quantity_delta'  => $after - (float) $current,
-			'quantity_after'  => $after,
+			'quantity_before' => $entry['before'],
+			'quantity_delta'  => $entry['delta'],
+			'quantity_after'  => $entry['after'],
 			'negative'        => $after < 0,
 		);
 	}

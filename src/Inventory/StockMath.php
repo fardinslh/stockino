@@ -25,4 +25,17 @@ final class StockMath {
 			'after'  => $after,
 		);
 	}
+
+	/** @return array{before:float,after:float,delta:float} */
+	public static function movement_from_delta_result( float $after, float $effective_delta ): array {
+		if ( ! is_finite( $after ) || ! is_finite( $effective_delta ) || 0.0 === $effective_delta ) {
+			throw new \InvalidArgumentException( 'A finite, non-zero effective delta is required.' );
+		}
+
+		return array(
+			'before' => $after - $effective_delta,
+			'after'  => $after,
+			'delta'  => $effective_delta,
+		);
+	}
 }
