@@ -10,6 +10,7 @@ import type {
   StockMovement,
 } from '@/types/inventory';
 import type { RelationshipInput, SupplierDetail, SupplierInput, SupplierListItem, SupplierPageData, SupplierParams, SupplierProduct, SupplierStats } from '@/types/suppliers';
+import type { PurchaseOrder, PurchaseOrderDetail, PurchaseOrderInput, PurchaseOrderItem, PurchaseOrderParams, PurchaseOrderStats, PurchasePage, PurchaseReceipt } from '@/types/purchasing';
 
 interface ApiErrorBody { code?: string; message?: string }
 
@@ -79,4 +80,20 @@ export const supplierApi = {
   updateProduct: (id: number, productId: number, payload: RelationshipInput): Promise<SupplierProduct> => request(`suppliers/${id}/products/${productId}`, { method: 'PUT', body: JSON.stringify(payload) }),
   unlinkProduct: (id: number, productId: number): Promise<{ deleted: true }> => request(`suppliers/${id}/products/${productId}`, { method: 'DELETE' }),
   searchProducts: (search: string): Promise<Paginated<InventoryProduct>> => request(`products/search?${queryString({ search, page: 1, per_page: 20 })}`),
+};
+
+export const purchasingApi = {
+  list: (params: PurchaseOrderParams): Promise<PurchasePage<PurchaseOrder>> => request(`purchase-orders?${queryString(params)}`),
+  stats: (): Promise<PurchaseOrderStats> => request('purchase-orders/stats'),
+  get: (id: number): Promise<PurchaseOrderDetail> => request(`purchase-orders/${id}`),
+  create: (payload: PurchaseOrderInput): Promise<PurchaseOrderDetail> => request('purchase-orders', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (id: number, payload: Partial<PurchaseOrderInput>): Promise<PurchaseOrderDetail> => request(`purchase-orders/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  markOrdered: (id: number): Promise<PurchaseOrderDetail> => request(`purchase-orders/${id}/mark-ordered`, { method: 'POST' }),
+  cancel: (id: number): Promise<PurchaseOrderDetail> => request(`purchase-orders/${id}/cancel`, { method: 'POST' }),
+  addItem: (id: number, payload: { product_id: number; ordered_quantity: string; notes?: string }): Promise<PurchaseOrderItem> => request(`purchase-orders/${id}/items`, { method: 'POST', body: JSON.stringify(payload) }),
+  updateItem: (id: number, itemId: number, payload: { ordered_quantity: string; notes?: string }): Promise<PurchaseOrderItem> => request(`purchase-orders/${id}/items/${itemId}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteItem: (id: number, itemId: number): Promise<{ deleted: true }> => request(`purchase-orders/${id}/items/${itemId}`, { method: 'DELETE' }),
+  receipts: (id: number): Promise<PurchasePage<PurchaseReceipt>> => request(`purchase-orders/${id}/receipts?page=1&per_page=20`),
+  receipt: (id: number): Promise<PurchaseReceipt> => request(`purchase-receipts/${id}`),
+  receive: (id: number, payload: { idempotency_key: string; note: string; items: { item_id: number; quantity: string }[] }): Promise<PurchaseReceipt> => request(`purchase-orders/${id}/receipts`, { method: 'POST', body: JSON.stringify(payload) }),
 };

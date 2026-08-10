@@ -12,6 +12,8 @@ export interface SupplierListItem {
   email: string | null;
   lead_time_days: number | null;
   linked_product_count: number;
+  open_purchase_order_count: number;
+  last_purchase_order_date: string | null;
   updated_at: string;
 }
 

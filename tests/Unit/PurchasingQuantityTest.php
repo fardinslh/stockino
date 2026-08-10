@@ -28,4 +28,21 @@ final class PurchasingQuantityTest extends TestCase {
 	public function test_normalizes_to_decimal_twenty_six( mixed $input, ?string $expected ): void {
 		self::assertSame( $expected, PurchasingQuantity::normalize( $input ) );
 	}
+
+	public function test_fixed_scale_arithmetic_has_no_float_drift(): void {
+		self::assertSame( '0.300000', PurchasingQuantity::add( '0.100000', '0.200000' ) );
+		self::assertSame( '0.200000', PurchasingQuantity::subtract( '0.300000', '0.100000' ) );
+		self::assertGreaterThan( 0, PurchasingQuantity::compare( '10.000000', '7.000000' ) );
+		self::assertTrue( PurchasingQuantity::is_zero( '0.000000' ) );
+	}
+
+	public function test_fixed_scale_arithmetic_rejects_underflow_and_overflow(): void {
+		$this->expectException( \UnderflowException::class );
+		PurchasingQuantity::subtract( '1.000000', '2.000000' );
+	}
+
+	public function test_fixed_scale_addition_rejects_overflow(): void {
+		$this->expectException( \OverflowException::class );
+		PurchasingQuantity::add( '99999999999999.999999', '0.000001' );
+	}
 }

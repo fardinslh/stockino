@@ -16,7 +16,7 @@
 defined( 'ABSPATH' ) || exit;
 
 define( 'STOCKINO_VERSION', '0.1.0' );
-define( 'STOCKINO_DB_VERSION', '2.0.0' );
+define( 'STOCKINO_DB_VERSION', '3.0.0' );
 define( 'STOCKINO_FILE', __FILE__ );
 define( 'STOCKINO_PATH', plugin_dir_path( __FILE__ ) );
 define( 'STOCKINO_URL', plugin_dir_url( __FILE__ ) );

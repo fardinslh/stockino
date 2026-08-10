@@ -4,16 +4,23 @@ namespace Stockino;
 
 use Stockino\Admin\AdminPage;
 use Stockino\Database\Installer;
+use Stockino\Database\PurchaseOrderRepository;
+use Stockino\Database\PurchaseReceiptRepository;
 use Stockino\Database\StockMovementRepository;
 use Stockino\Database\SupplierProductRepository;
 use Stockino\Database\SupplierRepository;
 use Stockino\Inventory\ExternalStockTracker;
 use Stockino\Inventory\InventoryService;
 use Stockino\Inventory\InventoryQuery;
+use Stockino\Inventory\InventoryMutationService;
 use Stockino\Inventory\ProductDtoFactory;
 use Stockino\Inventory\StockAdjustmentService;
 use Stockino\REST\RestApi;
+use Stockino\REST\PurchaseOrderRestApi;
 use Stockino\REST\SupplierRestApi;
+use Stockino\Purchasing\MysqlReceiveLock;
+use Stockino\Purchasing\PurchaseOrderService;
+use Stockino\Purchasing\PurchaseReceivingService;
 use Stockino\Suppliers\SupplierProductCleanup;
 use Stockino\Suppliers\SupplierProductService;
 use Stockino\Suppliers\SupplierService;
@@ -40,9 +47,10 @@ final class Plugin {
 
 		$movements = new StockMovementRepository();
 		$tracker   = new ExternalStockTracker( $movements );
+		$mutations = new InventoryMutationService( $movements, $tracker );
 		$inventory = new InventoryService( $movements, new ProductDtoFactory(), new InventoryQuery() );
 		$tracker->register();
-		( new RestApi( $inventory, new StockAdjustmentService( $movements, $tracker ), $movements ) )->register();
+		( new RestApi( $inventory, new StockAdjustmentService( $mutations ), $movements ) )->register();
 		$validator = new SupplierValidator();
 		$suppliers = new SupplierRepository();
 		$relations = new SupplierProductRepository();
@@ -52,10 +60,19 @@ final class Plugin {
 			new SupplierProductService( $relations, $suppliers, $validator ),
 			$inventory
 		) )->register();
+		$orders            = new PurchaseOrderRepository();
+		$receipts          = new PurchaseReceiptRepository();
+		$order_service     = new PurchaseOrderService( $orders, $suppliers, $relations );
+		$receiving_service = new PurchaseReceivingService( $orders, $receipts, $mutations, new MysqlReceiveLock() );
+		( new PurchaseOrderRestApi(
+			$order_service,
+			$receiving_service
+		) )->register();
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			( new \Stockino\Support\FixtureCommand() )->register();
 			( new \Stockino\Support\SupplierFixtureCommand() )->register();
+			( new \Stockino\Support\PurchaseFixtureCommand( $order_service, $receiving_service, $suppliers, $relations ) )->register();
 		}
 
 		do_action( 'stockino_loaded' );

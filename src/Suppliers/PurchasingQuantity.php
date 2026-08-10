@@ -7,6 +7,11 @@ final class PurchasingQuantity {
 	private const INTEGER_DIGITS = 14;
 
 	public static function normalize( mixed $value ): ?string {
+		$normalized = self::normalize_nonnegative( $value );
+		return null === $normalized || self::is_zero( $normalized ) ? null : $normalized;
+	}
+
+	public static function normalize_nonnegative( mixed $value ): ?string {
 		if ( ! is_string( $value ) && ! is_int( $value ) && ! is_float( $value ) ) {
 			return null;
 		}
@@ -33,10 +38,69 @@ final class PurchasingQuantity {
 
 		$integer = ltrim( $integer, '0' );
 		$integer = '' === $integer ? '0' : $integer;
-		if ( strlen( $integer ) > self::INTEGER_DIGITS || ( '0' === $integer && '000000' === $scaled ) ) {
+		if ( strlen( $integer ) > self::INTEGER_DIGITS ) {
 			return null;
 		}
 		return $integer . '.' . $scaled;
+	}
+
+	public static function compare( string $left, string $right ): int {
+		return strcmp( self::digits( $left ), self::digits( $right ) );
+	}
+
+	public static function add( string $left, string $right ): string {
+		$left_digits  = self::digits( $left );
+		$right_digits = self::digits( $right );
+		$result       = '';
+		$carry        = 0;
+		for ( $index = strlen( $left_digits ) - 1; $index >= 0; --$index ) {
+			$sum    = (int) $left_digits[ $index ] + (int) $right_digits[ $index ] + $carry;
+			$result = (string) ( $sum % 10 ) . $result;
+			$carry  = intdiv( $sum, 10 );
+		}
+		if ( $carry > 0 ) {
+			throw new \OverflowException( 'Quantity exceeds DECIMAL(20,6).' );
+		}
+		return self::from_digits( $result );
+	}
+
+	public static function subtract( string $left, string $right ): string {
+		if ( self::compare( $left, $right ) < 0 ) {
+			throw new \UnderflowException( 'Quantity cannot be negative.' );
+		}
+		$left_digits  = self::digits( $left );
+		$right_digits = self::digits( $right );
+		$result       = '';
+		$borrow       = 0;
+		for ( $index = strlen( $left_digits ) - 1; $index >= 0; --$index ) {
+			$digit = (int) $left_digits[ $index ] - $borrow - (int) $right_digits[ $index ];
+			if ( $digit < 0 ) {
+				$digit += 10;
+				$borrow = 1;
+			} else {
+				$borrow = 0;
+			}
+			$result = (string) $digit . $result;
+		}
+		return self::from_digits( $result );
+	}
+
+	public static function is_zero( string $value ): bool {
+		return '00000000000000000000' === self::digits( $value );
+	}
+
+	private static function digits( string $value ): string {
+		$normalized = self::normalize_nonnegative( $value );
+		if ( null === $normalized ) {
+			throw new \InvalidArgumentException( 'Invalid quantity.' );
+		}
+		list( $integer, $fraction ) = explode( '.', $normalized );
+		return str_pad( $integer, self::INTEGER_DIGITS, '0', STR_PAD_LEFT ) . $fraction;
+	}
+
+	private static function from_digits( string $digits ): string {
+		$integer = ltrim( substr( $digits, 0, self::INTEGER_DIGITS ), '0' );
+		return ( '' === $integer ? '0' : $integer ) . '.' . substr( $digits, self::INTEGER_DIGITS );
 	}
 
 	private static function expand_exponent( string $value ): ?string {

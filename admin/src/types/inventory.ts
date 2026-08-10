@@ -5,14 +5,17 @@ export type AdjustmentReason = 'manual_adjustment' | 'damaged' | 'correction' | 
 export interface StockMovement {
   product_id: number;
   variation_id: number | null;
-  movement_type: 'manual_adjustment' | 'woocommerce_external_change';
-  reason: AdjustmentReason | 'external_change';
+  movement_type: 'manual_adjustment' | 'woocommerce_external_change' | 'purchase_receipt';
+  reason: AdjustmentReason | 'external_change' | 'purchase_receipt';
   quantity_before: number;
   quantity_delta: number;
   quantity_after: number;
   actor_id: number | null;
   actor_name: string | null;
   note: string | null;
+  reference_type: string | null;
+  reference_id: string | null;
+  metadata: { purchase_order_id?: number; receipt_id?: number; source_product_id?: number; stock_owner_id?: number } | null;
   created_at: string;
 }
 

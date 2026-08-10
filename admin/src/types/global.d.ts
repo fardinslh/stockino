@@ -3,7 +3,7 @@ interface StockinoSettings {
   nonce: string;
   locale: string;
   currency: string;
-  page: 'inventory' | 'suppliers';
+  page: 'inventory' | 'suppliers' | 'purchase-orders';
   adminUrl: string;
 }
 

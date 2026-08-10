@@ -1,6 +1,6 @@
 # Stockino
 
-Stockino is an independent commercial WooCommerce operations plugin for purchasing and inventory. Version `0.1.0` contains the Phase 0 foundation, the Phase 1 inventory dashboard and stock ledger, and the Phase 2 supplier-management foundation. Purchase orders, receiving, valuation, and reorder suggestions remain intentionally out of scope.
+Stockino is an independent commercial WooCommerce operations plugin for purchasing and inventory. Version `0.1.0` contains the Phase 0 foundation, Phase 1 inventory dashboard and stock ledger, Phase 2 supplier management, and Phase 3 purchase orders and receiving. Valuation and reorder suggestions remain intentionally out of scope.
 
 ## Requirements
 
@@ -74,6 +74,18 @@ The `stockino_supplier_products` table models many-to-many catalog relationships
 
 Supplier lists and linked-product lists use separate prepared `COUNT` and bounded `LIMIT/OFFSET` queries. Linked-product counts are aggregated in the supplier list query rather than queried per row, and all public counts and totals exclude orphan or non-product relationships. A bounded page of relation product IDs is hydrated with WooCommerce CRUD objects. Permanent product deletion removes exact supplier relationships; deleting a variable parent also removes its variation relationships, while trash and ordinary catalog status changes preserve them. The remote product picker reuses the Phase 1 bounded inventory search and returns at most the requested page.
 
+## Purchase Orders and Receiving
+
+Phase 3 stores purchase orders, immutable supplier/product snapshots, receipt headers, and receipt lines in four dedicated Stockino tables. Drafts are structurally editable; marking ordered locks supplier, line identity, and ordered quantities. The explicit state machine is `draft → ordered → partially_received → received`, with cancellation allowed from draft, ordered, or partially received. Cancellation never reverses inventory already received. Phase 3 intentionally contains no purchase prices, costing, tax, totals, or inventory valuation.
+
+Ordered and received quantities use fixed six-decimal string arithmetic compatible with `DECIMAL(20,6)`; PHP floats are not authoritative for ordered/received/remaining calculations. Before receiving, Stockino verifies that WooCommerce's effective stock amount exactly represents the requested business quantity. A variation remains the PO/receipt source identity, while `get_stock_managed_by_id()` selects the actual WooCommerce stock owner. Parent-managed variation receipts therefore update the parent but retain both IDs in receipt and movement metadata.
+
+Each receive operation has a database-unique client idempotency key and acquires a short, per-PO MySQL advisory lock. Current line quantities are re-read and the whole request is prevalidated after lock acquisition. Inventory increments use WooCommerce's relative `wc_update_product_stock(..., 'increase')` path through the same internal mutation service as Phase 1 manual adjustments. The external tracker is suppressed for the actual stock owner, producing exactly one `purchase_receipt` movement per successful line. Completed-token retries return the existing receipt; processing and `requires_attention` tokens never replay inventory mutation.
+
+If stock changes but later audit persistence fails, the receipt and affected line become `requires_attention`, the known applied quantity is accounted for when possible, and automatic replay is blocked. Successful earlier lines in a multi-line request remain recorded; Stockino does not attempt a potentially unsafe automatic stock reversal. An administrator must reconcile any attention state against WooCommerce and the physical receipt.
+
+Purchase-order lists use a prepared count plus one aggregate, bounded list query. Receipt history is paginated. Development fixtures are restricted to `local` and `development` and create receipt examples through the real receiving service.
+
 On 2026-08-10, the local fixture check returned 20 of 20 suppliers in 1.03 ms and 20 of 30 relationships for `SUP-001` in 8.66 ms. These are local development observations, not production latency guarantees.
 
 ## REST API
@@ -95,6 +107,14 @@ All routes require an authenticated user with `manage_woocommerce` and a WordPre
 - `PUT|PATCH|DELETE /stockino/v1/suppliers/{id}/products/{product_id}`
 - `GET /stockino/v1/products/{id}/suppliers`
 - `GET /stockino/v1/products/search`
+- `GET|POST /stockino/v1/purchase-orders`
+- `GET|PUT|PATCH /stockino/v1/purchase-orders/{id}`
+- `POST /stockino/v1/purchase-orders/{id}/mark-ordered`
+- `POST /stockino/v1/purchase-orders/{id}/cancel`
+- `GET|POST /stockino/v1/purchase-orders/{id}/items`
+- `PUT|PATCH|DELETE /stockino/v1/purchase-orders/{id}/items/{item_id}`
+- `GET|POST /stockino/v1/purchase-orders/{id}/receipts`
+- `GET /stockino/v1/purchase-receipts/{id}`
 
 List/history endpoints are server-paginated. CSV export includes only product/variation identity and inventory fields and prefixes formula-like text values to prevent spreadsheet injection.
 
@@ -120,15 +140,16 @@ Browser QA uses local Chrome by default. Set `STOCKINO_BROWSER_PATH` and `STOCKI
 
 ## Manual QA
 
-Validate activation with and without WooCommerce; admin asset scoping; inventory pagination and filters; stock adjustments and exactly-one movement behavior; supplier create/edit/archive/reactivate; supplier pagination/search; product and variation relationships; supplier SKU, lead-time, MOQ and order-multiple metadata; remote product search; unlink behavior; inventory non-interference; desktop/390px RTL layout; clean browser console; and activation alongside Orderino. The automated smoke scripts cover these server-side paths.
+Validate activation with and without WooCommerce; admin asset scoping; inventory pagination and filters; stock adjustments and exactly-one movement behavior; supplier create/edit/archive/reactivate; supplier pagination/search; product and variation relationships; purchase-order draft/order/cancel transitions; partial and complete receiving; idempotent retry; parent-managed variation receiving; attention-state visibility; inventory non-interference; desktop/390px RTL layout; clean browser console; and activation alongside Orderino. The automated smoke scripts cover these server-side paths.
 
 ## Roadmap status
 
 - Phase 0: foundation — complete
 - Phase 1: inventory dashboard and stock ledger — complete and hardened
 - Phase 2: supplier management — complete
-- Phase 3: purchase orders and receiving — not implemented
-- Phase 4–6: costing, reorder intelligence, and commercial release — not implemented
+- Phase 3: purchase orders and receiving — complete
+- Phase 4: costs and inventory valuation — not started
+- Phase 4–6: costing/valuation, reorder intelligence, and commercial release — not implemented
 
 ## Data retention
 

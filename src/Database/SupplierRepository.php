@@ -44,10 +44,14 @@ final class SupplierRepository {
 		global $wpdb;
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
-				"SELECT s.*, COUNT(p.ID) linked_product_count FROM %i s
+				"SELECT s.*, COUNT(p.ID) linked_product_count,
+				(SELECT COUNT(*) FROM %i po WHERE po.supplier_id = s.id AND po.status IN ('ordered','partially_received')) open_purchase_order_count,
+				(SELECT MAX(order_date) FROM %i po WHERE po.supplier_id = s.id) last_purchase_order_date FROM %i s
 				LEFT JOIN %i sp ON sp.supplier_id = s.id
 				LEFT JOIN %i p ON p.ID = sp.product_id AND p.post_type IN ('product', 'product_variation')
 				WHERE s.id = %d GROUP BY s.id",
+				$wpdb->prefix . 'stockino_purchase_orders',
+				$wpdb->prefix . 'stockino_purchase_orders',
 				$this->table(),
 				$this->relations_table(),
 				$wpdb->posts,
@@ -144,16 +148,18 @@ final class SupplierRepository {
 	/** @return array<string,mixed> */
 	private function format( array $row, bool $detail ): array {
 		$data = array(
-			'id'                   => (int) $row['id'],
-			'name'                 => (string) $row['name'],
-			'code'                 => null !== $row['code'] ? (string) $row['code'] : null,
-			'status'               => (string) $row['status'],
-			'contact_name'         => null !== $row['contact_name'] ? (string) $row['contact_name'] : null,
-			'phone'                => null !== $row['phone'] ? (string) $row['phone'] : null,
-			'email'                => null !== $row['email'] ? (string) $row['email'] : null,
-			'lead_time_days'       => null !== $row['lead_time_days'] ? (int) $row['lead_time_days'] : null,
-			'linked_product_count' => (int) ( $row['linked_product_count'] ?? 0 ),
-			'updated_at'           => $this->iso_date( (string) $row['updated_at'] ),
+			'id'                        => (int) $row['id'],
+			'name'                      => (string) $row['name'],
+			'code'                      => null !== $row['code'] ? (string) $row['code'] : null,
+			'status'                    => (string) $row['status'],
+			'contact_name'              => null !== $row['contact_name'] ? (string) $row['contact_name'] : null,
+			'phone'                     => null !== $row['phone'] ? (string) $row['phone'] : null,
+			'email'                     => null !== $row['email'] ? (string) $row['email'] : null,
+			'lead_time_days'            => null !== $row['lead_time_days'] ? (int) $row['lead_time_days'] : null,
+			'linked_product_count'      => (int) ( $row['linked_product_count'] ?? 0 ),
+			'open_purchase_order_count' => (int) ( $row['open_purchase_order_count'] ?? 0 ),
+			'last_purchase_order_date'  => $row['last_purchase_order_date'] ?? null,
+			'updated_at'                => $this->iso_date( (string) $row['updated_at'] ),
 		);
 		if ( $detail ) {
 			$data += array(

@@ -23,9 +23,10 @@ export const StockHistoryDrawer: React.FC<Props> = ({ product, onClose }) => {
             <article className="stockino-movement" key={`${movement.created_at}-${index}`}>
               <span className={`stockino-movement-dot ${movement.quantity_delta >= 0 ? 'positive' : 'negative'}`} />
               <div className="stockino-movement-head"><strong className={movement.quantity_delta >= 0 ? 'positive' : 'negative'} dir="ltr">{movement.quantity_delta > 0 ? '+' : ''}{movement.quantity_delta}</strong><time dateTime={movement.created_at}>{new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(movement.created_at))}</time></div>
-              <p>{movement.reason === 'external_change' ? 'تغییر خارج از استوکینو' : reasonLabels[movement.reason]}</p>
+              <p>{movement.reason === 'external_change' ? 'تغییر خارج از استوکینو' : movement.reason === 'purchase_receipt' ? 'دریافت سفارش خرید' : reasonLabels[movement.reason]}</p>
               <span className="stockino-stock-route" dir="ltr">{movement.quantity_before} → {movement.quantity_after}</span>
               <small>{movement.actor_name ? `توسط ${movement.actor_name}` : 'فرایند ووکامرس'}{movement.note ? ` · ${movement.note}` : ''}</small>
+              {movement.metadata?.purchase_order_id && <a className="stockino-text-action" href={`${window.stockinoSettings.adminUrl}?page=stockino-purchase-orders`}>مشاهده سفارش خرید</a>}
             </article>
           ))}
           {!query.isLoading && query.data?.items.length === 0 && <p className="stockino-no-history">هنوز تغییری در دفتر موجودی ثبت نشده است.</p>}

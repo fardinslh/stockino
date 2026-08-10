@@ -2,7 +2,6 @@
 
 namespace Stockino\Inventory;
 
-use Stockino\Database\StockMovementRepository;
 use WC_Product;
 use WP_Error;
 
@@ -10,8 +9,7 @@ final class StockAdjustmentService {
 	private const SUPPORTED_TYPES = array( 'simple', 'variable', 'variation' );
 
 	public function __construct(
-		private readonly StockMovementRepository $movements,
-		private readonly ?ExternalStockTracker $tracker = null
+		private readonly InventoryMutation $mutations
 	) {}
 
 	/** @return array<string,mixed>|WP_Error */
@@ -79,66 +77,34 @@ final class StockAdjustmentService {
 			return new WP_Error( 'stockino_negative_stock', __( 'This adjustment would create negative stock, but backorders are not allowed.', 'stockino' ), array( 'status' => 409 ) );
 		}
 
-		$this->tracker?->suppress( $product_id );
-		try {
-			if ( 'delta' === $mode ) {
-				$operation = $effective_quantity > 0 ? 'increase' : 'decrease';
-				$updated   = wc_update_product_stock( $product, abs( $effective_quantity ), $operation );
-			} else {
-				$updated = wc_update_product_stock( $product, $effective_quantity, 'set' );
-			}
-		} finally {
-			$this->tracker?->release( $product_id );
-		}
-
-		if ( false === $updated || null === $updated ) {
-			return new WP_Error( 'stockino_stock_update_failed', __( 'WooCommerce could not update this stock quantity.', 'stockino' ), array( 'status' => 500 ) );
-		}
-
-		$after = (float) $updated;
-		$entry = 'delta' === $mode
-			? StockMath::movement_from_delta_result( $after, $effective_quantity )
-			: array(
-				'before' => (float) $current,
-				'after'  => $after,
-				'delta'  => $after - (float) $current,
-			);
-		try {
-			$movement_id = $this->movements->insert(
-				array(
-					'product_id'      => $product->is_type( 'variation' ) ? $product->get_parent_id() : $product->get_id(),
-					'variation_id'    => $product->is_type( 'variation' ) ? $product->get_id() : null,
-					'movement_type'   => 'manual_adjustment',
-					'reason'          => $reason,
-					'quantity_before' => $entry['before'],
-					'quantity_delta'  => $entry['delta'],
-					'quantity_after'  => $entry['after'],
-					'note'            => '' !== $note ? $note : null,
-					'metadata'        => array(
-						'mode'               => $mode,
-						'requested_quantity' => $quantity,
-					),
-				)
-			);
-		} catch ( \RuntimeException $exception ) {
-			return new WP_Error(
-				'stockino_ledger_failed',
-				__( 'Stock changed in WooCommerce, but the audit movement could not be recorded. Review this product immediately.', 'stockino' ),
-				array(
-					'status'         => 500,
-					'stock_changed'  => true,
-					'quantity_after' => $after,
-				)
-			);
+		$result = $this->mutations->mutate(
+			$product,
+			$mode,
+			$effective_quantity,
+			array(
+				'product_id'      => $product->is_type( 'variation' ) ? $product->get_parent_id() : $product->get_id(),
+				'variation_id'    => $product->is_type( 'variation' ) ? $product->get_id() : null,
+				'movement_type'   => 'manual_adjustment',
+				'reason'          => $reason,
+				'quantity_before' => (float) $current,
+				'note'            => '' !== $note ? $note : null,
+				'metadata'        => array(
+					'mode'               => $mode,
+					'requested_quantity' => $quantity,
+				),
+			)
+		);
+		if ( is_wp_error( $result ) ) {
+			return $result;
 		}
 
 		return array(
 			'product_id'      => $product->get_id(),
-			'movement_id'     => $movement_id,
-			'quantity_before' => $entry['before'],
-			'quantity_delta'  => $entry['delta'],
-			'quantity_after'  => $entry['after'],
-			'negative'        => $after < 0,
+			'movement_id'     => $result['movement_id'],
+			'quantity_before' => $result['quantity_before'],
+			'quantity_delta'  => $result['quantity_delta'],
+			'quantity_after'  => $result['quantity_after'],
+			'negative'        => $result['quantity_after'] < 0,
 		);
 	}
 }

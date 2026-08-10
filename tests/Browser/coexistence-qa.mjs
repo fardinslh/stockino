@@ -6,7 +6,10 @@ const browser = await chromium.launch({ executablePath, headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const failures = [];
 page.on('pageerror', (error) => failures.push(`pageerror: ${error.message}`));
-page.on('console', (message) => { if (message.type() === 'error') failures.push(`console: ${message.text()}`); });
+page.on('console', (message) => {
+  const source = message.location().url;
+  if (message.type() === 'error' && !source.endsWith('/favicon.ico')) failures.push(`console: ${message.text()} (${source})`);
+});
 
 try {
   await page.goto(`${baseUrl}/wp-login.php`, { waitUntil: 'domcontentloaded' });

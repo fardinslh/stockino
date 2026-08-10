@@ -92,9 +92,10 @@ final class StockMovementRepository {
 		);
 	}
 
-	/** @return array{product_id:int,variation_id:?int,movement_type:string,reason:string,quantity_before:float,quantity_delta:float,quantity_after:float,actor_id:?int,actor_name:?string,note:?string,created_at:string} */
+	/** @return array<string,mixed> */
 	private function format_row( array $row ): array {
 		$created_at = \DateTimeImmutable::createFromFormat( 'Y-m-d H:i:s', (string) $row['created_at'], new \DateTimeZone( 'UTC' ) );
+		$metadata   = ! empty( $row['metadata'] ) ? json_decode( (string) $row['metadata'], true ) : null;
 		return array(
 			'product_id'      => (int) $row['product_id'],
 			'variation_id'    => $row['variation_id'] ? (int) $row['variation_id'] : null,
@@ -106,6 +107,9 @@ final class StockMovementRepository {
 			'actor_id'        => $row['actor_id'] ? (int) $row['actor_id'] : null,
 			'actor_name'      => isset( $row['actor_name'] ) ? (string) $row['actor_name'] : null,
 			'note'            => ! empty( $row['note'] ) ? (string) $row['note'] : null,
+			'reference_type'  => ! empty( $row['reference_type'] ) ? (string) $row['reference_type'] : null,
+			'reference_id'    => ! empty( $row['reference_id'] ) ? (string) $row['reference_id'] : null,
+			'metadata'        => is_array( $metadata ) ? $metadata : null,
 			'created_at'      => $created_at ? $created_at->format( DATE_RFC3339 ) : (string) $row['created_at'],
 		);
 	}

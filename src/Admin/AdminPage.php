@@ -3,8 +3,9 @@
 namespace Stockino\Admin;
 
 final class AdminPage {
-	private string $inventory_hook = '';
-	private string $supplier_hook  = '';
+	private string $inventory_hook  = '';
+	private string $supplier_hook   = '';
+	private string $purchasing_hook = '';
 
 	public function register(): void {
 		add_action( 'admin_menu', array( $this, 'add_menu' ) );
@@ -40,6 +41,15 @@ final class AdminPage {
 			'stockino-suppliers',
 			array( $this, 'render' )
 		);
+
+		$this->purchasing_hook = (string) add_submenu_page(
+			'stockino',
+			__( 'Purchase Orders', 'stockino' ),
+			__( 'Purchase Orders', 'stockino' ),
+			'manage_woocommerce',
+			'stockino-purchase-orders',
+			array( $this, 'render' )
+		);
 	}
 
 	public function render(): void {
@@ -47,7 +57,7 @@ final class AdminPage {
 	}
 
 	public function enqueue_assets( string $hook_suffix ): void {
-		if ( ! in_array( $hook_suffix, array( $this->inventory_hook, $this->supplier_hook ), true ) ) {
+		if ( ! in_array( $hook_suffix, array( $this->inventory_hook, $this->supplier_hook, $this->purchasing_hook ), true ) ) {
 			return;
 		}
 
@@ -70,7 +80,7 @@ final class AdminPage {
 				'nonce'    => wp_create_nonce( 'wp_rest' ),
 				'locale'   => determine_locale(),
 				'currency' => get_woocommerce_currency(),
-				'page'     => $hook_suffix === $this->supplier_hook ? 'suppliers' : 'inventory',
+				'page'     => $hook_suffix === $this->supplier_hook ? 'suppliers' : ( $hook_suffix === $this->purchasing_hook ? 'purchase-orders' : 'inventory' ),
 				'adminUrl' => admin_url( 'admin.php' ),
 			)
 		);
