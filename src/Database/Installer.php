@@ -20,6 +20,9 @@ final class Installer {
 		if ( version_compare( $current, '1.0.0', '<' ) ) {
 			self::create_stock_movements_table();
 		}
+		if ( version_compare( $current, '2.0.0', '<' ) ) {
+			self::create_supplier_tables();
+		}
 
 		update_option( self::OPTION, STOCKINO_DB_VERSION, false );
 	}
@@ -50,6 +53,54 @@ final class Installer {
 			KEY variation_created (variation_id, created_at),
 			KEY movement_type (movement_type),
 			KEY created_at (created_at)
+		) {$charset};";
+
+		dbDelta( $sql );
+	}
+
+	private static function create_supplier_tables(): void {
+		global $wpdb;
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+		$suppliers = $wpdb->prefix . 'stockino_suppliers';
+		$relations = $wpdb->prefix . 'stockino_supplier_products';
+		$charset   = $wpdb->get_charset_collate();
+		$sql       = "CREATE TABLE {$suppliers} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			name varchar(190) NOT NULL,
+			code varchar(100) NULL,
+			status varchar(20) NOT NULL DEFAULT 'active',
+			contact_name varchar(190) NULL,
+			phone varchar(100) NULL,
+			email varchar(190) NULL,
+			website varchar(500) NULL,
+			address text NULL,
+			lead_time_days int unsigned NULL,
+			notes text NULL,
+			created_by bigint(20) unsigned NULL,
+			created_at datetime NOT NULL,
+			updated_at datetime NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY code (code),
+			KEY status (status),
+			KEY name (name),
+			KEY created_at (created_at)
+		) {$charset};
+		CREATE TABLE {$relations} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			supplier_id bigint(20) unsigned NOT NULL,
+			product_id bigint(20) unsigned NOT NULL,
+			supplier_sku varchar(190) NULL,
+			lead_time_days int unsigned NULL,
+			minimum_order_quantity decimal(20,6) NULL,
+			order_multiple decimal(20,6) NULL,
+			notes text NULL,
+			created_at datetime NOT NULL,
+			updated_at datetime NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY supplier_product (supplier_id, product_id),
+			KEY supplier_id (supplier_id),
+			KEY product_id (product_id)
 		) {$charset};";
 
 		dbDelta( $sql );

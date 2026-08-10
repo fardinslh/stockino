@@ -9,6 +9,7 @@ import type {
   Paginated,
   StockMovement,
 } from '@/types/inventory';
+import type { RelationshipInput, SupplierDetail, SupplierInput, SupplierListItem, SupplierPageData, SupplierParams, SupplierProduct, SupplierStats } from '@/types/suppliers';
 
 interface ApiErrorBody { code?: string; message?: string }
 
@@ -63,4 +64,19 @@ export const inventoryApi = {
   bulkAdjust: (productIds: number[], payload: Omit<AdjustmentPayload, 'mode' | 'expected_current'>): Promise<BulkAdjustmentResult> =>
     request('inventory/bulk-adjust', { method: 'POST', body: JSON.stringify({ product_ids: productIds, ...payload }) }),
   exportUrl: (params: InventoryParams): string => endpoint(`inventory/export?${queryString(params)}`),
+};
+
+export const supplierApi = {
+  list: (params: SupplierParams): Promise<SupplierPageData<SupplierListItem>> => request(`suppliers?${queryString(params)}`),
+  stats: (): Promise<SupplierStats> => request('suppliers/stats'),
+  get: (id: number): Promise<SupplierDetail> => request(`suppliers/${id}`),
+  create: (payload: SupplierInput): Promise<SupplierDetail> => request('suppliers', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (id: number, payload: Partial<SupplierInput>): Promise<SupplierDetail> => request(`suppliers/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  archive: (id: number): Promise<SupplierDetail> => request(`suppliers/${id}/archive`, { method: 'POST' }),
+  reactivate: (id: number): Promise<SupplierDetail> => request(`suppliers/${id}/reactivate`, { method: 'POST' }),
+  products: (id: number, page: number, search: string): Promise<SupplierPageData<SupplierProduct>> => request(`suppliers/${id}/products?${queryString({ page, per_page: 20, search })}`),
+  linkProduct: (id: number, payload: RelationshipInput & { product_id: number }): Promise<SupplierProduct> => request(`suppliers/${id}/products`, { method: 'POST', body: JSON.stringify(payload) }),
+  updateProduct: (id: number, productId: number, payload: RelationshipInput): Promise<SupplierProduct> => request(`suppliers/${id}/products/${productId}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  unlinkProduct: (id: number, productId: number): Promise<{ deleted: true }> => request(`suppliers/${id}/products/${productId}`, { method: 'DELETE' }),
+  searchProducts: (search: string): Promise<Paginated<InventoryProduct>> => request(`products/search?${queryString({ search, page: 1, per_page: 20 })}`),
 };

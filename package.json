@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "qa:browser": "node tests/Browser/admin-qa.mjs"
+    "qa:browser": "node tests/Browser/admin-qa.mjs",
+    "qa:suppliers": "node tests/Browser/supplier-qa.mjs",
+    "qa:coexistence": "node tests/Browser/coexistence-qa.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.66.8",

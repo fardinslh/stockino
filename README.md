@@ -1,6 +1,6 @@
 # Stockino
 
-Stockino is an independent commercial WooCommerce operations plugin for purchasing and inventory. Version `0.1.0` contains the Phase 0 foundation and the Phase 1 inventory dashboard and stock ledger. Suppliers, purchase orders, receiving, valuation, and reorder suggestions are intentionally out of scope.
+Stockino is an independent commercial WooCommerce operations plugin for purchasing and inventory. Version `0.1.0` contains the Phase 0 foundation, the Phase 1 inventory dashboard and stock ledger, and the Phase 2 supplier-management foundation. Purchase orders, receiving, valuation, and reorder suggestions remain intentionally out of scope.
 
 ## Requirements
 
@@ -30,8 +30,11 @@ Generate a representative catalog and run the repeatable API smoke suite:
 
 ```bash
 docker compose run --rm wpcli wp stockino fixtures --count=2000
+docker compose run --rm wpcli wp stockino supplier-fixtures
 docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/inventory.php
 docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/performance.php
+docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/suppliers.php
+docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/supplier-performance.php
 ```
 
 Fixture generation is permitted only when `wp_get_environment_type()` is exactly `local` or `development`; staging, production, and unknown/default environments are rejected. `--start=<index>` supports extending an existing development catalog without reusing fixture SKUs.
@@ -42,6 +45,7 @@ Fixture generation is permitted only when `wp_get_environment_type()` is exactly
 - `src/Admin`: WordPress menu and page-scoped Vite asset loading.
 - `src/Database`: versioned, activation/upgrade-only migrations using `stockino_db_version`, plus the movement repository.
 - `src/Inventory`: WooCommerce queries, DTOs, stock mutation, stock math, and external-change tracking.
+- `src/Suppliers`: supplier and catalog-relationship validation and business services.
 - `src/REST`: authenticated `stockino/v1` management endpoints.
 - `admin/src`: scoped React, strict TypeScript, TanStack Query, Tailwind, and responsive RTL UI.
 - `tests`: focused PHPUnit tests.
@@ -60,7 +64,17 @@ Inventory listing runs one read-only SQL query that returns only the current pag
 
 ### Catalog performance check
 
-On 2026-08-10, the local Docker check used 2,000 parent products plus 570 variation rows. `page=1&per_page=20&manage_stock=true&low_stock=true` returned 20 of 443 matches in 139.37 ms, with a measured PHP peak-memory delta of 0.00 MiB. The response hydrated 20 products; the remaining matching IDs stayed in the database. This is a development measurement, not a production latency guarantee.
+On 2026-08-10, the local Docker check used 2,000 parent products plus 570 variation rows. `page=1&per_page=20&manage_stock=true&low_stock=true` returned 20 of 443 matches in 117.84 ms, with a measured PHP peak-memory delta of 0.00 MiB. The response hydrated 20 products; the remaining matching IDs stayed in the database. This is a development measurement, not a production latency guarantee.
+
+## Supplier Management
+
+Suppliers are stored in dedicated `stockino_suppliers` rows rather than WordPress posts. Profiles include an optional case-normalized unique code, active/inactive status, contact details, website, address, default lead time, notes, creator, and UTC timestamps. Archiving is the normal lifecycle action; Phase 2 intentionally exposes no hard-delete endpoint so future purchasing history can retain stable supplier identity.
+
+The `stockino_supplier_products` table models many-to-many catalog relationships for simple products, variable parents, and exact variation IDs. It stores supplier SKU, optional lead-time override, decimal minimum order quantity, order multiple, notes, and UTC timestamps. Variation IDs are never collapsed to their parent. Effective lead time is the relationship override, then the supplier default, then unknown. This metadata never changes WooCommerce inventory and never creates stock movements.
+
+Supplier lists and linked-product lists use separate prepared `COUNT` and bounded `LIMIT/OFFSET` queries. Linked-product counts are aggregated in the supplier list query rather than queried per row. A bounded page of relation product IDs is hydrated with WooCommerce CRUD objects. The remote product picker reuses the Phase 1 bounded inventory search and returns at most the requested page.
+
+On 2026-08-10, the local fixture check returned 20 of 20 suppliers in 1.03 ms and 20 of 30 relationships for `SUP-001` in 8.66 ms. These are local development observations, not production latency guarantees.
 
 ## REST API
 
@@ -73,6 +87,14 @@ All routes require an authenticated user with `manage_woocommerce` and a WordPre
 - `POST /stockino/v1/products/{id}/adjust-stock`
 - `POST /stockino/v1/inventory/bulk-adjust`
 - `GET /stockino/v1/inventory/export`
+- `GET|POST /stockino/v1/suppliers`
+- `GET|PUT|PATCH /stockino/v1/suppliers/{id}`
+- `POST /stockino/v1/suppliers/{id}/archive`
+- `POST /stockino/v1/suppliers/{id}/reactivate`
+- `GET|POST /stockino/v1/suppliers/{id}/products`
+- `PUT|PATCH|DELETE /stockino/v1/suppliers/{id}/products/{product_id}`
+- `GET /stockino/v1/products/{id}/suppliers`
+- `GET /stockino/v1/products/search`
 
 List/history endpoints are server-paginated. CSV export includes only product/variation identity and inventory fields and prefixes formula-like text values to prevent spreadsheet injection.
 
@@ -82,6 +104,7 @@ List/history endpoints are server-paginated. CSV export includes only product/va
 npm run typecheck
 npm run build
 npm run qa:browser
+npm run qa:suppliers
 docker compose run --rm --entrypoint php composer vendor/bin/phpunit
 docker compose run --rm --entrypoint php composer vendor/bin/phpcs --standard=phpcs.xml.dist
 ```
@@ -97,7 +120,15 @@ Browser QA uses local Chrome by default. Set `STOCKINO_BROWSER_PATH` and `STOCKI
 
 ## Manual QA
 
-Validate activation with and without WooCommerce; admin asset scoping; 20/50/100 pagination; name/SKU search; type/status/category/manage-stock/low-stock filters; simple, parent, and variation rows; +5, -3, set, stale-set and negative/backorder adjustments; exactly-one movement rows; actor/reason/note history; partial bulk failure and the 100-ID cap; CSV output; desktop/390px RTL layout; clean browser console; and activation alongside Orderino. The automated smoke script covers the server-side mutation, permission, pagination, search, variation, ledger, bulk, and CSV paths.
+Validate activation with and without WooCommerce; admin asset scoping; inventory pagination and filters; stock adjustments and exactly-one movement behavior; supplier create/edit/archive/reactivate; supplier pagination/search; product and variation relationships; supplier SKU, lead-time, MOQ and order-multiple metadata; remote product search; unlink behavior; inventory non-interference; desktop/390px RTL layout; clean browser console; and activation alongside Orderino. The automated smoke scripts cover these server-side paths.
+
+## Roadmap status
+
+- Phase 0: foundation — complete
+- Phase 1: inventory dashboard and stock ledger — complete and hardened
+- Phase 2: supplier management — complete
+- Phase 3: purchase orders and receiving — not implemented
+- Phase 4–6: costing, reorder intelligence, and commercial release — not implemented
 
 ## Data retention
 

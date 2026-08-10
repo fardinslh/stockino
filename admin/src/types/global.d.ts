@@ -3,6 +3,8 @@ interface StockinoSettings {
   nonce: string;
   locale: string;
   currency: string;
+  page: 'inventory' | 'suppliers';
+  adminUrl: string;
 }
 
 interface Window {
@@ -13,4 +15,3 @@ interface Window {
     };
   };
 }
-

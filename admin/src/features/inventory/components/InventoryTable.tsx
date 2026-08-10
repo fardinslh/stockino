@@ -1,5 +1,6 @@
 import React from 'react';
 import { History, PencilLine } from './Icons';
+import { Building2 } from 'lucide-react';
 import StockStatusBadge from './StockStatusBadge';
 import type { InventoryProduct } from '@/types/inventory';
 
@@ -34,7 +35,7 @@ export const InventoryTable: React.FC<Props> = ({ products, loading, selected, o
               <td data-label="حد کمبود" className="stockino-tabular">{product.low_stock_amount.toLocaleString('en-US')}</td>
               <td data-label="پیش‌فروش">{product.backorders === 'no' ? 'خیر' : product.backorders === 'notify' ? 'با اعلان' : 'بله'}</td>
               <td data-label="آخرین تغییر">{product.last_movement ? <span className={`stockino-delta ${product.last_movement.quantity_delta >= 0 ? 'positive' : 'negative'}`} dir="ltr">{product.last_movement.quantity_delta > 0 ? '+' : ''}{product.last_movement.quantity_delta}</span> : '—'}</td>
-              <td data-label="عملیات"><div className="stockino-row-actions"><button className="stockino-text-action" disabled={!product.can_adjust} title={!product.can_adjust ? 'این محصول موجودی مستقل مدیریت نمی‌کند' : undefined} onClick={() => onAdjust(product)}><PencilLine size={16} /> تنظیم</button><button className="stockino-text-action" onClick={() => onHistory(product)}><History size={16} /> تاریخچه</button></div></td>
+              <td data-label="عملیات"><div className="stockino-row-actions"><button className="stockino-text-action" disabled={!product.can_adjust} title={!product.can_adjust ? 'این محصول موجودی مستقل مدیریت نمی‌کند' : undefined} onClick={() => onAdjust(product)}><PencilLine size={16} /> تنظیم</button><button className="stockino-text-action" onClick={() => onHistory(product)}><History size={16} /> تاریخچه</button><a className="stockino-text-action" href={`${window.stockinoSettings.adminUrl}?page=stockino-suppliers`}><Building2 size={16} /> تأمین‌کنندگان</a></div></td>
             </tr>
           ))}
           {!loading && products.length === 0 && <tr><td className="stockino-no-results" colSpan={10}>محصولی با این فیلترها پیدا نشد.</td></tr>}

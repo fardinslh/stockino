@@ -5,12 +5,18 @@ namespace Stockino;
 use Stockino\Admin\AdminPage;
 use Stockino\Database\Installer;
 use Stockino\Database\StockMovementRepository;
+use Stockino\Database\SupplierProductRepository;
+use Stockino\Database\SupplierRepository;
 use Stockino\Inventory\ExternalStockTracker;
 use Stockino\Inventory\InventoryService;
 use Stockino\Inventory\InventoryQuery;
 use Stockino\Inventory\ProductDtoFactory;
 use Stockino\Inventory\StockAdjustmentService;
 use Stockino\REST\RestApi;
+use Stockino\REST\SupplierRestApi;
+use Stockino\Suppliers\SupplierProductService;
+use Stockino\Suppliers\SupplierService;
+use Stockino\Suppliers\SupplierValidator;
 
 final class Plugin {
 	private static bool $booted = false;
@@ -36,9 +42,17 @@ final class Plugin {
 		$inventory = new InventoryService( $movements, new ProductDtoFactory(), new InventoryQuery() );
 		$tracker->register();
 		( new RestApi( $inventory, new StockAdjustmentService( $movements, $tracker ), $movements ) )->register();
+		$validator = new SupplierValidator();
+		$suppliers = new SupplierRepository();
+		( new SupplierRestApi(
+			new SupplierService( $suppliers, $validator ),
+			new SupplierProductService( new SupplierProductRepository(), $suppliers, $validator ),
+			$inventory
+		) )->register();
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			( new \Stockino\Support\FixtureCommand() )->register();
+			( new \Stockino\Support\SupplierFixtureCommand() )->register();
 		}
 
 		do_action( 'stockino_loaded' );
