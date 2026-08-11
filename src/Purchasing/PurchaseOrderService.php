@@ -15,7 +15,8 @@ final class PurchaseOrderService {
 	public function __construct(
 		private readonly PurchaseOrderRepository $orders,
 		private readonly SupplierRepository $suppliers,
-		private readonly SupplierProductRepository $relations
+		private readonly SupplierProductRepository $relations,
+		private readonly ReceiveLock $lock
 	) {}
 
 	/** @return array{items:array<int,array<string,mixed>>,pagination:array<string,int>} */
@@ -57,6 +58,9 @@ final class PurchaseOrderService {
 		try {
 			$id = $this->orders->create( $data );
 		} catch ( \RuntimeException $exception ) {
+			if ( 'purchase_order_number_ambiguous' === $exception->getMessage() ) {
+				return $this->error( 'stockino_purchase_order_number_ambiguous', 'The purchase-order number could not be confirmed. Review purchasing records before creating another order.', 500 );
+			}
 			return $this->storage_error();
 		}
 		return $this->get( $id );
@@ -74,6 +78,11 @@ final class PurchaseOrderService {
 
 	/** @param array<string,mixed> $input @return array<string,mixed>|WP_Error */
 	public function update( int $id, array $input ) {
+		return $this->with_operation_lock( $id, fn() => $this->update_under_lock( $id, $input ) );
+	}
+
+	/** @param array<string,mixed> $input @return array<string,mixed>|WP_Error */
+	private function update_under_lock( int $id, array $input ) {
 		$order = $this->orders->find( $id );
 		if ( ! $order ) {
 			return $this->not_found();
@@ -94,6 +103,11 @@ final class PurchaseOrderService {
 
 	/** @param array<string,mixed> $input @return array<string,mixed>|WP_Error */
 	public function add_item( int $order_id, array $input ) {
+		return $this->with_operation_lock( $order_id, fn() => $this->add_item_under_lock( $order_id, $input ) );
+	}
+
+	/** @param array<string,mixed> $input @return array<string,mixed>|WP_Error */
+	private function add_item_under_lock( int $order_id, array $input ) {
 		$order = $this->orders->find( $order_id );
 		if ( ! $order ) {
 			return $this->not_found();
@@ -139,6 +153,11 @@ final class PurchaseOrderService {
 
 	/** @param array<string,mixed> $input @return array<string,mixed>|WP_Error */
 	public function update_item( int $order_id, int $item_id, array $input ) {
+		return $this->with_operation_lock( $order_id, fn() => $this->update_item_under_lock( $order_id, $item_id, $input ) );
+	}
+
+	/** @param array<string,mixed> $input @return array<string,mixed>|WP_Error */
+	private function update_item_under_lock( int $order_id, int $item_id, array $input ) {
 		$order = $this->orders->find( $order_id );
 		$item  = $this->orders->find_item( $order_id, $item_id );
 		if ( ! $order || ! $item ) {
@@ -168,6 +187,11 @@ final class PurchaseOrderService {
 
 	/** @return true|WP_Error */
 	public function delete_item( int $order_id, int $item_id ) {
+		return $this->with_operation_lock( $order_id, fn() => $this->delete_item_under_lock( $order_id, $item_id ) );
+	}
+
+	/** @return true|WP_Error */
+	private function delete_item_under_lock( int $order_id, int $item_id ) {
 		$order = $this->orders->find( $order_id );
 		if ( ! $order || ! $this->orders->find_item( $order_id, $item_id ) ) {
 			return $this->error( 'stockino_purchase_order_item_not_found', 'The purchase-order line does not exist.', 404 );
@@ -180,6 +204,11 @@ final class PurchaseOrderService {
 
 	/** @return array<string,mixed>|WP_Error */
 	public function mark_ordered( int $id ) {
+		return $this->with_operation_lock( $id, fn() => $this->mark_ordered_under_lock( $id ) );
+	}
+
+	/** @return array<string,mixed>|WP_Error */
+	private function mark_ordered_under_lock( int $id ) {
 		$order = $this->orders->find( $id );
 		if ( ! $order ) {
 			return $this->not_found();
@@ -213,6 +242,11 @@ final class PurchaseOrderService {
 
 	/** @return array<string,mixed>|WP_Error */
 	public function cancel( int $id ) {
+		return $this->with_operation_lock( $id, fn() => $this->cancel_under_lock( $id ) );
+	}
+
+	/** @return array<string,mixed>|WP_Error */
+	private function cancel_under_lock( int $id ) {
 		$order = $this->orders->find( $id );
 		if ( ! $order ) {
 			return $this->not_found();
@@ -288,6 +322,18 @@ final class PurchaseOrderService {
 
 	private function storage_error(): WP_Error {
 		return $this->error( 'stockino_purchase_order_storage_failed', 'The purchase order could not be saved.', 500 );
+	}
+
+	/** @param callable():mixed $operation @return mixed */
+	private function with_operation_lock( int $order_id, callable $operation ) {
+		if ( ! $this->lock->acquire( $order_id ) ) {
+			return $this->error( 'stockino_purchase_order_busy', 'Another operation is changing this purchase order. Try again shortly.', 409 );
+		}
+		try {
+			return $operation();
+		} finally {
+			$this->lock->release( $order_id );
+		}
 	}
 
 	private function error( string $code, string $message, int $status ): WP_Error {

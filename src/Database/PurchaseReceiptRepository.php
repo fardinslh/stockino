@@ -5,30 +5,63 @@ namespace Stockino\Database;
 use Stockino\Suppliers\PurchasingQuantity;
 
 final class PurchaseReceiptRepository {
+	private readonly \Closure $number_finalizer;
+
+	public function __construct( ?\Closure $number_finalizer = null ) {
+		$this->number_finalizer = $number_finalizer ?? static function ( string $table, int $id, string $column, string $number ): bool {
+			global $wpdb;
+			return false !== $wpdb->update( $table, array( $column => $number ), array( 'id' => $id ) );
+		};
+	}
+
 	/** @param array<string,mixed> $data */
 	public function create( array $data ): int {
 		global $wpdb;
-		$now  = current_time( 'mysql', true );
-		$data = array_merge(
+		$now       = current_time( 'mysql', true );
+		$temporary = 'RCV-PENDING-' . wp_generate_uuid4();
+		$data      = array_merge(
 			$data,
 			array(
-				'receipt_number' => 'RCV-PENDING-' . wp_generate_uuid4(),
+				'receipt_number' => $temporary,
 				'status'         => 'processing',
 				'created_by'     => get_current_user_id() > 0 ? get_current_user_id() : null,
 				'created_at'     => $now,
 				'updated_at'     => $now,
 			)
 		);
-		$old  = $wpdb->suppress_errors( true );
-		$ok   = $wpdb->insert( $this->receipts_table(), $data );
-		$dupe = str_contains( strtolower( (string) $wpdb->last_error ), 'duplicate' );
+		$old       = $wpdb->suppress_errors( true );
+		$ok        = $wpdb->insert( $this->receipts_table(), $data );
+		$dupe      = str_contains( strtolower( (string) $wpdb->last_error ), 'duplicate' );
 		$wpdb->suppress_errors( $old );
 		if ( false === $ok ) {
 			throw new \RuntimeException( $dupe ? 'duplicate_idempotency_key' : 'receipt_insert_failed' );
 		}
 		$id = (int) $wpdb->insert_id;
-		if ( false === $wpdb->update( $this->receipts_table(), array( 'receipt_number' => sprintf( 'RCV-%06d', $id ) ), array( 'id' => $id ) ) ) {
-			throw new \RuntimeException( 'receipt_number_failed' );
+		try {
+			$finalized = ( $this->number_finalizer )( $this->receipts_table(), $id, 'receipt_number', sprintf( 'RCV-%06d', $id ) );
+		} catch ( \Throwable $exception ) {
+			$finalized = false;
+		}
+		if ( ! $finalized ) {
+			$deleted = $wpdb->delete(
+				$this->receipts_table(),
+				array(
+					'id'             => $id,
+					'receipt_number' => $temporary,
+					'status'         => 'processing',
+				)
+			);
+			if ( 1 !== $deleted ) {
+				$wpdb->update(
+					$this->receipts_table(),
+					array( 'status' => 'requires_attention' ),
+					array(
+						'id'     => $id,
+						'status' => 'processing',
+					)
+				);
+			}
+			throw new \RuntimeException( 1 === $deleted ? 'receipt_number_failed' : 'receipt_number_ambiguous' );
 		}
 		return $id;
 	}
@@ -47,7 +80,19 @@ final class PurchaseReceiptRepository {
 	/** @return array<string,mixed>|null */
 	public function find( int $id ): ?array {
 		global $wpdb;
-		$row = $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', $this->receipts_table(), $id ), ARRAY_A );
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT r.*, COUNT(ri.id) item_count,
+				COALESCE(SUM(CASE WHEN ri.status = 'completed' THEN ri.quantity_received ELSE 0 END), 0) confirmed_units,
+				COALESCE(SUM(CASE WHEN ri.status = 'requires_attention' THEN ri.quantity_received ELSE 0 END), 0) attention_units,
+				COALESCE(SUM(CASE WHEN ri.status = 'failed' THEN ri.quantity_received ELSE 0 END), 0) failed_units
+				FROM %i r LEFT JOIN %i ri ON ri.receipt_id = r.id WHERE r.id = %d GROUP BY r.id",
+				$this->receipts_table(),
+				$this->receipt_items_table(),
+				$id
+			),
+			ARRAY_A
+		);
 		if ( ! $row ) {
 			return null;
 		}
@@ -129,9 +174,12 @@ final class PurchaseReceiptRepository {
 		$total = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE purchase_order_id = %d', $this->receipts_table(), $order_id ) );
 		$rows  = $wpdb->get_results(
 			$wpdb->prepare(
-				'SELECT r.*, COUNT(ri.id) item_count, COALESCE(SUM(ri.quantity_received), 0) received_units
+				"SELECT r.*, COUNT(ri.id) item_count,
+				COALESCE(SUM(CASE WHEN ri.status = 'completed' THEN ri.quantity_received ELSE 0 END), 0) confirmed_units,
+				COALESCE(SUM(CASE WHEN ri.status = 'requires_attention' THEN ri.quantity_received ELSE 0 END), 0) attention_units,
+				COALESCE(SUM(CASE WHEN ri.status = 'failed' THEN ri.quantity_received ELSE 0 END), 0) failed_units
 				FROM %i r LEFT JOIN %i ri ON ri.receipt_id = r.id
-				WHERE r.purchase_order_id = %d GROUP BY r.id ORDER BY r.created_at DESC, r.id DESC LIMIT %d OFFSET %d',
+				WHERE r.purchase_order_id = %d GROUP BY r.id ORDER BY r.created_at DESC, r.id DESC LIMIT %d OFFSET %d",
 				$this->receipts_table(),
 				$this->receipt_items_table(),
 				$order_id,
@@ -162,7 +210,10 @@ final class PurchaseReceiptRepository {
 			'note'              => null !== $row['note'] ? (string) $row['note'] : null,
 			'created_by'        => $row['created_by'] ? (int) $row['created_by'] : null,
 			'item_count'        => (int) ( $row['item_count'] ?? 0 ),
-			'received_units'    => PurchasingQuantity::normalize_nonnegative( $row['received_units'] ?? '0' ) ?? '0.000000',
+			'received_units'    => PurchasingQuantity::normalize_nonnegative( $row['confirmed_units'] ?? '0' ) ?? '0.000000',
+			'confirmed_units'   => PurchasingQuantity::normalize_nonnegative( $row['confirmed_units'] ?? '0' ) ?? '0.000000',
+			'attention_units'   => PurchasingQuantity::normalize_nonnegative( $row['attention_units'] ?? '0' ) ?? '0.000000',
+			'failed_units'      => PurchasingQuantity::normalize_nonnegative( $row['failed_units'] ?? '0' ) ?? '0.000000',
 			'created_at'        => $this->iso_date( (string) $row['created_at'] ),
 			'completed_at'      => $row['completed_at'] ? $this->iso_date( (string) $row['completed_at'] ) : null,
 			'updated_at'        => $this->iso_date( (string) $row['updated_at'] ),

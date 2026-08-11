@@ -46,6 +46,17 @@ final class PurchaseReceivingService {
 				$existing = $this->receipts->find_by_key( $key );
 				return $existing ? $this->existing_receipt( $existing, $order_id ) : $this->storage_error();
 			}
+			if ( 'receipt_number_ambiguous' === $exception->getMessage() ) {
+				return new WP_Error(
+					'stockino_receipt_number_ambiguous',
+					'The receipt number could not be confirmed. Review this idempotency token before retrying.',
+					array(
+						'status'           => 500,
+						'mutation_outcome' => InventoryMutation::OUTCOME_UNCHANGED,
+						'receipt'          => $this->receipts->find_by_key( $key ),
+					)
+				);
+			}
 			return $this->storage_error();
 		}
 
@@ -159,7 +170,7 @@ final class PurchaseReceivingService {
 			}
 		} catch ( \RuntimeException $exception ) {
 			$this->mark_attention( $receipt_id );
-			return $this->attention_error( $receipt_id, false );
+			return $this->attention_error( $receipt_id, InventoryMutation::OUTCOME_UNCHANGED );
 		}
 
 		$any_stock_changed = false;
@@ -191,26 +202,31 @@ final class PurchaseReceivingService {
 					)
 				);
 				if ( is_wp_error( $result ) ) {
-					$data              = $result->get_error_data();
-					$stock_changed     = is_array( $data ) && ! empty( $data['stock_changed'] );
-					$any_stock_changed = $any_stock_changed || $stock_changed;
-					if ( $stock_changed ) {
+					$data    = $result->get_error_data();
+					$outcome = is_array( $data ) ? ( $data['mutation_outcome'] ?? InventoryMutation::OUTCOME_UNCERTAIN ) : InventoryMutation::OUTCOME_UNCERTAIN;
+					if ( ! in_array( $outcome, array( InventoryMutation::OUTCOME_UNCHANGED, InventoryMutation::OUTCOME_CHANGED, InventoryMutation::OUTCOME_UNCERTAIN ), true ) ) {
+						$outcome = InventoryMutation::OUTCOME_UNCERTAIN;
+					}
+					$changed           = InventoryMutation::OUTCOME_CHANGED === $outcome;
+					$uncertain         = InventoryMutation::OUTCOME_UNCERTAIN === $outcome;
+					$any_stock_changed = $any_stock_changed || $changed;
+					if ( $changed ) {
 						$this->orders->increment_received( $line['item']['id'], $line['quantity'] );
 					}
 					$this->receipts->update_item(
 						$entry['id'],
 						array(
-							'status'          => $stock_changed ? 'requires_attention' : 'failed',
+							'status'          => $changed || $uncertain ? 'requires_attention' : 'failed',
 							'quantity_before' => is_array( $data ) ? ( $data['quantity_before'] ?? null ) : null,
-							'quantity_after'  => is_array( $data ) ? ( $data['quantity_after'] ?? null ) : null,
+							'quantity_after'  => is_array( $data ) ? ( $data['quantity_after'] ?? $data['observed_quantity_after'] ?? null ) : null,
 							'error_code'      => $result->get_error_code(),
-							'error_message'   => $result->get_error_message(),
+							'error_message'   => $this->mutation_error_message( $result, $outcome ),
 						)
 					);
 					$this->fail_remaining( $pending, $index + 1 );
 					$this->derive_order_status( $order_id );
 					$this->mark_attention( $receipt_id );
-					return $this->attention_error( $receipt_id, $stock_changed );
+					return $this->attention_error( $receipt_id, $outcome );
 				}
 				$any_stock_changed = true;
 				if ( ! $this->orders->increment_received( $line['item']['id'], $line['quantity'] ) ) {
@@ -227,7 +243,7 @@ final class PurchaseReceivingService {
 					);
 					$this->fail_remaining( $pending, $index + 1 );
 					$this->mark_attention( $receipt_id );
-					return $this->attention_error( $receipt_id, true );
+					return $this->attention_error( $receipt_id, InventoryMutation::OUTCOME_CHANGED );
 				}
 				$this->receipts->update_item(
 					$entry['id'],
@@ -256,7 +272,7 @@ final class PurchaseReceivingService {
 			} catch ( \Throwable $ignored ) {
 				// The action above is the final reporting path when receipt persistence is unavailable.
 			}
-			return $this->attention_error( $receipt_id, $any_stock_changed );
+			return $this->attention_error( $receipt_id, $any_stock_changed ? InventoryMutation::OUTCOME_CHANGED : InventoryMutation::OUTCOME_UNCERTAIN );
 		}
 	}
 
@@ -322,16 +338,24 @@ final class PurchaseReceivingService {
 		$this->receipts->update( $receipt_id, array( 'status' => 'requires_attention' ) );
 	}
 
-	private function attention_error( int $receipt_id, bool $stock_changed ): WP_Error {
+	private function attention_error( int $receipt_id, string $outcome ): WP_Error {
 		return new WP_Error(
 			'stockino_receipt_requires_attention',
 			'Receiving did not complete normally. Review the recorded receipt before taking further action.',
 			array(
-				'status'        => 500,
-				'stock_changed' => $stock_changed,
-				'receipt'       => $this->receipts->find( $receipt_id ),
+				'status'           => 500,
+				'mutation_outcome' => $outcome,
+				'receipt'          => $this->receipts->find( $receipt_id ),
 			)
 		);
+	}
+
+	private function mutation_error_message( WP_Error $error, string $outcome ): string {
+		$data    = $error->get_error_data();
+		$details = is_array( $data ) && ! empty( $data['exception_message'] )
+			? sprintf( ' [%s: %s]', (string) ( $data['exception_type'] ?? 'Throwable' ), (string) $data['exception_message'] )
+			: '';
+		return substr( sprintf( '%s Mutation outcome: %s.%s', $error->get_error_message(), $outcome, $details ), 0, 2000 );
 	}
 
 	private function quantity_error(): WP_Error {

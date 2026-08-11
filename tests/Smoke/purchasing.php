@@ -315,6 +315,7 @@ $assert(
 	)->get_status(),
 	'A received PO cannot receive again.'
 );
+$assert( 409 === $request( 'POST', "/stockino/v1/purchase-orders/{$order_id}/cancel" )->get_status(), 'When receiving completes first, cancellation re-reads the received state and rejects the transition.' );
 
 $list = $request(
 	'GET',
@@ -395,6 +396,92 @@ $ordered_line   = $request(
 )->get_data();
 $request( 'POST', "/stockino/v1/purchase-orders/{$ordered_cancel['id']}/mark-ordered" );
 $assert( 'cancelled' === $request( 'POST', "/stockino/v1/purchase-orders/{$ordered_cancel['id']}/cancel" )->get_data()['status'] && $simple_id === $ordered_line['product_id'], 'An unreceived ordered PO can be cancelled without changing stock.' );
+$assert(
+	409 === $request(
+		'POST',
+		"/stockino/v1/purchase-orders/{$ordered_cancel['id']}/receipts",
+		array(
+			'idempotency_key' => wp_generate_uuid4(),
+			'items'           => array(
+				array(
+					'item_id'  => $ordered_line['id'],
+					'quantity' => '1',
+				),
+			),
+		)
+	)->get_status(),
+	'When cancellation completes first, receiving re-reads the cancelled state and changes no inventory.'
+);
+
+$race_add        = $request( 'POST', '/stockino/v1/purchase-orders', array( 'supplier_id' => $supplier_id ) )->get_data();
+$mark_wins_lock  = new class( new Stockino\Database\PurchaseOrderRepository(), $race_add['id'] ) implements Stockino\Purchasing\ReceiveLock {
+	private bool $ran = false;
+	public function __construct( private readonly Stockino\Database\PurchaseOrderRepository $orders, private readonly int $order_id ) {}
+	public function acquire( int $purchase_order_id ): bool {
+		if ( ! $this->ran ) {
+			$this->orders->update( $this->order_id, array( 'status' => 'ordered' ) );
+			$this->ran = true;
+		}
+		return true;
+	}
+	public function release( int $purchase_order_id ): void {}
+};
+$race_service    = new Stockino\Purchasing\PurchaseOrderService( new Stockino\Database\PurchaseOrderRepository(), new Stockino\Database\SupplierRepository(), new Stockino\Database\SupplierProductRepository(), $mark_wins_lock );
+$race_add_result = $race_service->add_item(
+	$race_add['id'],
+	array(
+		'product_id'       => $simple_id,
+		'ordered_quantity' => '1',
+	)
+);
+$assert( is_wp_error( $race_add_result ) && 'stockino_purchase_order_locked' === $race_add_result->get_error_code(), 'A mark-ordered transition that wins the PO lock prevents a stale add-item write.' );
+
+$race_line_order   = $request( 'POST', '/stockino/v1/purchase-orders', array( 'supplier_id' => $supplier_id ) )->get_data();
+$race_line         = $request(
+	'POST',
+	"/stockino/v1/purchase-orders/{$race_line_order['id']}/items",
+	array(
+		'product_id'       => $simple_id,
+		'ordered_quantity' => '2',
+	)
+)->get_data();
+$line_mark_lock    = new class( new Stockino\Database\PurchaseOrderRepository(), $race_line_order['id'] ) implements Stockino\Purchasing\ReceiveLock {
+	private bool $ran = false;
+	public function __construct( private readonly Stockino\Database\PurchaseOrderRepository $orders, private readonly int $order_id ) {}
+	public function acquire( int $purchase_order_id ): bool {
+		if ( ! $this->ran ) {
+			$this->orders->update( $this->order_id, array( 'status' => 'ordered' ) );
+			$this->ran = true;
+		}
+		return true;
+	}
+	public function release( int $purchase_order_id ): void {}
+};
+$line_race_service = new Stockino\Purchasing\PurchaseOrderService( new Stockino\Database\PurchaseOrderRepository(), new Stockino\Database\SupplierRepository(), new Stockino\Database\SupplierProductRepository(), $line_mark_lock );
+$stale_update      = $line_race_service->update_item( $race_line_order['id'], $race_line['id'], array( 'ordered_quantity' => '3' ) );
+$stale_delete      = $line_race_service->delete_item( $race_line_order['id'], $race_line['id'] );
+$assert( is_wp_error( $stale_update ) && is_wp_error( $stale_delete ) && '2.000000' === ( new Stockino\Database\PurchaseOrderRepository() )->find_item( $race_line_order['id'], $race_line['id'] )['ordered_quantity'], 'A mark-ordered transition prevents stale update and delete writes after the lock is acquired.' );
+
+$race_blocked = $request( 'POST', '/stockino/v1/purchase-orders', array( 'supplier_id' => $supplier_id ) )->get_data();
+$request(
+	'POST',
+	"/stockino/v1/purchase-orders/{$race_blocked['id']}/items",
+	array(
+		'product_id'       => $simple_id,
+		'ordered_quantity' => '1',
+	)
+);
+$operation_blocked_lock = new class() implements Stockino\Purchasing\ReceiveLock {
+	public function acquire( int $purchase_order_id ): bool {
+		return false; }
+	public function release( int $purchase_order_id ): void {}
+};
+$blocked_order_service  = new Stockino\Purchasing\PurchaseOrderService( new Stockino\Database\PurchaseOrderRepository(), new Stockino\Database\SupplierRepository(), new Stockino\Database\SupplierProductRepository(), $operation_blocked_lock );
+$blocked_mark           = $blocked_order_service->mark_ordered( $race_blocked['id'] );
+$blocked_edit           = $blocked_order_service->update( $race_blocked['id'], array( 'supplier_reference' => 'stale-write' ) );
+$blocked_cancel         = $blocked_order_service->cancel( $race_blocked['id'] );
+$blocked_state          = $request( 'GET', "/stockino/v1/purchase-orders/{$race_blocked['id']}" )->get_data();
+$assert( is_wp_error( $blocked_mark ) && is_wp_error( $blocked_edit ) && is_wp_error( $blocked_cancel ) && 'draft' === $blocked_state['status'] && null === $blocked_state['supplier_reference'], 'Structural mutation, mark-ordered, and cancel all respect PO lock contention.' );
 
 $unmanaged = new WC_Product_Simple();
 $unmanaged->set_name( 'Phase 3 unmanaged product' );
@@ -539,11 +626,11 @@ $failed_mutation   = new class() implements Stockino\Inventory\InventoryMutation
 			'stockino_injected_ledger_failure',
 			'Injected failure after stock mutation.',
 			array(
-				'status'          => 500,
-				'stock_changed'   => true,
-				'quantity_before' => 10,
-				'quantity_delta'  => $quantity,
-				'quantity_after'  => 10 + $quantity,
+				'status'           => 500,
+				'mutation_outcome' => Stockino\Inventory\InventoryMutation::OUTCOME_CHANGED,
+				'quantity_before'  => 10,
+				'quantity_delta'   => $quantity,
+				'quantity_after'   => 10 + $quantity,
 			)
 		);
 	}
@@ -583,6 +670,105 @@ $assert(
 	),
 	'A requires-attention receipt cannot replay through the same token.'
 );
+$failure_history = $receipt_repository->paginate_for_order( $failure_order['id'], 1, 20 );
+$assert( '0.000000' === $failure_history['items'][0]['confirmed_units'] && '1.000000' === $failure_history['items'][0]['attention_units'] && '0.000000' === $failure_history['items'][0]['failed_units'], 'Receipt history separates confirmed quantities from applied quantities requiring attention.' );
+
+$uncertain_order = $request( 'POST', '/stockino/v1/purchase-orders', array( 'supplier_id' => $supplier_id ) )->get_data();
+$uncertain_line  = $request(
+	'POST',
+	"/stockino/v1/purchase-orders/{$uncertain_order['id']}/items",
+	array(
+		'product_id'       => $simple_id,
+		'ordered_quantity' => '1',
+	)
+)->get_data();
+$request( 'POST', "/stockino/v1/purchase-orders/{$uncertain_order['id']}/mark-ordered" );
+$uncertain_before    = (float) wc_get_product( $simple_id )->get_stock_quantity();
+$uncertain_mutation  = new class() implements Stockino\Inventory\InventoryMutation {
+	public function mutate( WC_Product $stock_target, string $mode, float $quantity, array $movement ) {
+		$before = (float) $stock_target->get_stock_quantity();
+		wc_update_product_stock( $stock_target, $quantity, 'increase' );
+		return new WP_Error(
+			'stockino_injected_late_hook_failure',
+			'Injected exception after the stock write reached persistence.',
+			array(
+				'status'                  => 500,
+				'mutation_outcome'        => Stockino\Inventory\InventoryMutation::OUTCOME_UNCERTAIN,
+				'quantity_before'         => $before,
+				'observed_quantity_after' => $before + $quantity,
+				'exception_type'          => RuntimeException::class,
+				'exception_message'       => 'Injected late hook failure.',
+			)
+		);
+	}
+};
+$uncertain_receiving = new Stockino\Purchasing\PurchaseReceivingService( new Stockino\Database\PurchaseOrderRepository(), $receipt_repository, $uncertain_mutation, new Stockino\Purchasing\MysqlReceiveLock() );
+$uncertain_key       = 'uncertain-' . wp_generate_uuid4();
+$uncertain_result    = $uncertain_receiving->receive(
+	$uncertain_order['id'],
+	array(
+		'idempotency_key' => $uncertain_key,
+		'items'           => array(
+			array(
+				'item_id'  => $uncertain_line['id'],
+				'quantity' => '1',
+			),
+		),
+	)
+);
+$uncertain_receipt   = $receipt_repository->find_by_key( $uncertain_key );
+$uncertain_detail    = $request( 'GET', "/stockino/v1/purchase-orders/{$uncertain_order['id']}" )->get_data();
+$assert( is_wp_error( $uncertain_result ) && Stockino\Inventory\InventoryMutation::OUTCOME_UNCERTAIN === $uncertain_result->get_error_data()['mutation_outcome'] && 'requires_attention' === $uncertain_receipt['items'][0]['status'], 'An unprovable post-write exception records an uncertain requires-attention receipt line.' );
+$assert( $same_quantity( $uncertain_before + 1, (float) wc_get_product( $simple_id )->get_stock_quantity() ) && '0.000000' === $uncertain_detail['received_units'], 'An uncertain mutation is not mislabeled as a confirmed PO receipt and is never auto-reversed.' );
+$assert( '0.000000' === $uncertain_receipt['confirmed_units'] && '1.000000' === $uncertain_receipt['attention_units'] && '0.000000' === $uncertain_receipt['failed_units'], 'Receipt totals expose uncertain attention quantity separately from confirmed and failed quantity.' );
+$uncertain_retry_stock = (float) wc_get_product( $simple_id )->get_stock_quantity();
+$same_token_retry      = $uncertain_receiving->receive(
+	$uncertain_order['id'],
+	array(
+		'idempotency_key' => $uncertain_key,
+		'items'           => array(),
+	)
+);
+$new_token_retry       = $uncertain_receiving->receive(
+	$uncertain_order['id'],
+	array(
+		'idempotency_key' => 'uncertain-new-' . wp_generate_uuid4(),
+		'items'           => array(
+			array(
+				'item_id'  => $uncertain_line['id'],
+				'quantity' => '1',
+			),
+		),
+	)
+);
+$assert( is_wp_error( $same_token_retry ) && is_wp_error( $new_token_retry ) && $same_quantity( $uncertain_retry_stock, (float) wc_get_product( $simple_id )->get_stock_quantity() ), 'Neither the same token nor a fresh token can blindly apply an uncertain quantity again.' );
+
+$failed_totals_key = 'failed-totals-' . wp_generate_uuid4();
+$failed_totals_id  = $receipt_repository->create(
+	array(
+		'purchase_order_id' => $deleted_order['id'],
+		'idempotency_key'   => $failed_totals_key,
+	)
+);
+$failed_item_id    = $receipt_repository->create_item(
+	array(
+		'receipt_id'             => $failed_totals_id,
+		'purchase_order_item_id' => $valid_line['id'],
+		'product_id'             => $simple_id,
+		'stock_owner_id'         => $simple_id,
+		'quantity_received'      => '1',
+	)
+);
+$receipt_repository->update_item(
+	$failed_item_id,
+	array(
+		'status'     => 'failed',
+		'error_code' => 'stockino_receipt_halted',
+	)
+);
+$receipt_repository->update( $failed_totals_id, array( 'status' => 'requires_attention' ) );
+$failed_totals = $receipt_repository->find( $failed_totals_id );
+$assert( '0.000000' === $failed_totals['received_units'] && '0.000000' === $failed_totals['confirmed_units'] && '0.000000' === $failed_totals['attention_units'] && '1.000000' === $failed_totals['failed_units'], 'Failed or halted receipt lines are never presented as successfully received.' );
 
 $blocked_lock      = new class() implements Stockino\Purchasing\ReceiveLock {
 	public function acquire( int $purchase_order_id ): bool {
@@ -600,11 +786,77 @@ $blocked           = $blocked_receiving->receive(
 );
 $assert( is_wp_error( $blocked ) && 'stockino_purchase_order_busy' === $blocked->get_error_code() && null === $receipt_repository->find_by_key( $blocked_key ), 'Lock contention performs no receiving and leaves the request safely retryable.' );
 
+$order_count_before = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', $orders_table ) );
+$failing_orders     = new Stockino\Database\PurchaseOrderRepository( static fn(): bool => false );
+try {
+	$failing_orders->create(
+		array(
+			'supplier_id'            => $supplier_id,
+			'supplier_name_snapshot' => 'Number failure supplier',
+		)
+	);
+	$po_number_failed = false;
+} catch ( RuntimeException $exception ) {
+	$po_number_failed = 'purchase_order_number_failed' === $exception->getMessage();
+}
+$assert( $po_number_failed && $order_count_before === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', $orders_table ) ), 'A failed PO-number finalization removes its provably temporary draft row.' );
+
+$receipt_count_before = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', $receipts_table ) );
+$failed_number_key    = 'number-failure-' . wp_generate_uuid4();
+$failing_receipts     = new Stockino\Database\PurchaseReceiptRepository( static fn(): bool => false );
+try {
+	$failing_receipts->create(
+		array(
+			'purchase_order_id' => $deleted_order['id'],
+			'idempotency_key'   => $failed_number_key,
+		)
+	);
+	$receipt_number_failed = false;
+} catch ( RuntimeException $exception ) {
+	$receipt_number_failed = 'receipt_number_failed' === $exception->getMessage();
+}
+$assert( $receipt_number_failed && $receipt_count_before === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', $receipts_table ) ) && null === $receipt_repository->find_by_key( $failed_number_key ), 'A failed receipt-number finalization removes its safe temporary row and does not strand the idempotency token.' );
+
+$supplier_repository = new Stockino\Database\SupplierRepository();
+$hardening_suppliers = array();
+$active_count        = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM %i WHERE status = 'active'", $suppliers_table ) );
+$needed              = max( 0, 101 - $active_count );
+for ( $index = 0; $index < $needed; ++$index ) {
+	$hardening_suppliers[] = $supplier_repository->create(
+		array(
+			'name'   => sprintf( 'Hardening remote supplier %03d %s', $index, wp_generate_password( 6, false, false ) ),
+			'code'   => sprintf( 'HRD-%03d-%s', $index, wp_generate_password( 5, false, false ) ),
+			'status' => 'active',
+		)
+	);
+}
+$second_supplier_page = $request(
+	'GET',
+	'/stockino/v1/suppliers',
+	array(
+		'page'     => 2,
+		'per_page' => 100,
+		'status'   => 'active',
+	)
+)->get_data();
+$beyond_first_hundred = $second_supplier_page['items'][0] ?? null;
+$remote_match         = $beyond_first_hundred ? $request(
+	'GET',
+	'/stockino/v1/suppliers',
+	array(
+		'page'     => 1,
+		'per_page' => 20,
+		'status'   => 'active',
+		'search'   => $beyond_first_hundred['name'],
+	)
+)->get_data() : null;
+$assert( $beyond_first_hundred && 1 === $remote_match['pagination']['total_items'] && $beyond_first_hundred['id'] === $remote_match['items'][0]['id'], 'Bounded remote supplier search can select a supplier beyond the first 100 active records.' );
+
 wc_update_product_stock( wc_get_product( $simple_id ), $simple_before, 'set' );
 wc_update_product_stock( wc_get_product( $variation_id ), $variation_before, 'set' );
 wc_update_product_stock( wc_get_product( $parent_id ), $parent_before, 'set' );
 
-$order_ids = array( $order_id, $cancel_order['id'], $draft_cancel['id'], $ordered_cancel['id'], $unmanaged_order['id'], $deleted_order['id'], $failure_order['id'] );
+$order_ids = array( $order_id, $cancel_order['id'], $draft_cancel['id'], $ordered_cancel['id'], $race_add['id'], $race_line_order['id'], $race_blocked['id'], $unmanaged_order['id'], $deleted_order['id'], $failure_order['id'], $uncertain_order['id'] );
 foreach ( $order_ids as $cleanup_order_id ) {
 	$receipt_ids = $wpdb->get_col( $wpdb->prepare( 'SELECT id FROM %i WHERE purchase_order_id = %d', $receipts_table, $cleanup_order_id ) );
 	foreach ( $receipt_ids as $cleanup_receipt_id ) {
@@ -616,6 +868,9 @@ foreach ( $order_ids as $cleanup_order_id ) {
 }
 $wpdb->delete( $relations_table, array( 'supplier_id' => $supplier_id ) );
 $wpdb->delete( $suppliers_table, array( 'id' => $supplier_id ) );
+foreach ( $hardening_suppliers as $hardening_supplier_id ) {
+	$wpdb->delete( $suppliers_table, array( 'id' => $hardening_supplier_id ) );
+}
 wp_delete_post( $unmanaged_id, true );
 
 WP_CLI::success( 'Stockino Phase 3 purchasing smoke suite passed.' );

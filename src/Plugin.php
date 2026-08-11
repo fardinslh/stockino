@@ -62,8 +62,9 @@ final class Plugin {
 		) )->register();
 		$orders            = new PurchaseOrderRepository();
 		$receipts          = new PurchaseReceiptRepository();
-		$order_service     = new PurchaseOrderService( $orders, $suppliers, $relations );
-		$receiving_service = new PurchaseReceivingService( $orders, $receipts, $mutations, new MysqlReceiveLock() );
+		$operation_lock    = new MysqlReceiveLock();
+		$order_service     = new PurchaseOrderService( $orders, $suppliers, $relations, $operation_lock );
+		$receiving_service = new PurchaseReceivingService( $orders, $receipts, $mutations, $operation_lock );
 		( new PurchaseOrderRestApi(
 			$order_service,
 			$receiving_service

@@ -57,6 +57,6 @@ export interface ReceiptItem {
   error_code: string | null;
   error_message: string | null;
 }
-export interface PurchaseReceipt { id: number; receipt_number: string; purchase_order_id: number; status: ReceiptStatus; note: string | null; item_count: number; received_units: string; created_at: string; completed_at: string | null; items?: ReceiptItem[]; idempotent_replay?: boolean }
+export interface PurchaseReceipt { id: number; receipt_number: string; purchase_order_id: number; status: ReceiptStatus; note: string | null; item_count: number; received_units: string; confirmed_units: string; attention_units: string; failed_units: string; created_at: string; completed_at: string | null; items?: ReceiptItem[]; idempotent_replay?: boolean }
 export type PurchasePage<T> = SupplierPageData<T>;
 export type PurchaseProduct = SupplierProduct;

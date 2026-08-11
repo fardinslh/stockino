@@ -15,6 +15,7 @@ final class InventoryMutationService implements InventoryMutation {
 	/** @param array<string,mixed> $movement @return array<string,mixed>|WP_Error */
 	public function mutate( WC_Product $stock_target, string $mode, float $quantity, array $movement ) {
 		$stock_owner_id = $stock_target->get_stock_managed_by_id();
+		$before         = $stock_target->get_stock_quantity();
 		$this->tracker?->suppress( $stock_owner_id );
 		try {
 			try {
@@ -25,12 +26,26 @@ final class InventoryMutationService implements InventoryMutation {
 					$updated = wc_update_product_stock( $stock_target, $quantity, 'set' );
 				}
 			} catch ( \Throwable $exception ) {
+				$observed_quantity = null;
+				try {
+					$observed = wc_get_product( $stock_owner_id );
+					if ( $observed instanceof WC_Product && null !== $observed->get_stock_quantity() ) {
+						$observed_quantity = (float) $observed->get_stock_quantity();
+					}
+				} catch ( \Throwable ) {
+					// Observation is best-effort only; the original write remains uncertain.
+				}
 				return new WP_Error(
-					'stockino_stock_update_failed',
-					__( 'WooCommerce could not update this stock quantity.', 'stockino' ),
+					'stockino_stock_update_uncertain',
+					__( 'WooCommerce reported an error after the stock write may have reached persistence. Reconcile this product before retrying.', 'stockino' ),
 					array(
-						'status'        => 500,
-						'stock_changed' => false,
+						'status'                  => 500,
+						'mutation_outcome'        => self::OUTCOME_UNCERTAIN,
+						'quantity_before'         => null === $before ? null : (float) $before,
+						'quantity_requested'      => $quantity,
+						'observed_quantity_after' => $observed_quantity,
+						'exception_type'          => get_class( $exception ),
+						'exception_message'       => $exception->getMessage(),
 					)
 				);
 			}
@@ -43,8 +58,8 @@ final class InventoryMutationService implements InventoryMutation {
 				'stockino_stock_update_failed',
 				__( 'WooCommerce could not update this stock quantity.', 'stockino' ),
 				array(
-					'status'        => 500,
-					'stock_changed' => false,
+					'status'           => 500,
+					'mutation_outcome' => self::OUTCOME_UNCHANGED,
 				)
 			);
 		}
@@ -73,20 +88,21 @@ final class InventoryMutationService implements InventoryMutation {
 				'stockino_ledger_failed',
 				__( 'Stock changed in WooCommerce, but the audit movement could not be recorded. Review this product immediately.', 'stockino' ),
 				array(
-					'status'          => 500,
-					'stock_changed'   => true,
-					'quantity_before' => $entry['before'],
-					'quantity_delta'  => $entry['delta'],
-					'quantity_after'  => $entry['after'],
+					'status'           => 500,
+					'mutation_outcome' => self::OUTCOME_CHANGED,
+					'quantity_before'  => $entry['before'],
+					'quantity_delta'   => $entry['delta'],
+					'quantity_after'   => $entry['after'],
 				)
 			);
 		}
 
 		return array(
-			'movement_id'     => $movement_id,
-			'quantity_before' => $entry['before'],
-			'quantity_delta'  => $entry['delta'],
-			'quantity_after'  => $entry['after'],
+			'mutation_outcome' => self::OUTCOME_CHANGED,
+			'movement_id'      => $movement_id,
+			'quantity_before'  => $entry['before'],
+			'quantity_delta'   => $entry['delta'],
+			'quantity_after'   => $entry['after'],
 		);
 	}
 }

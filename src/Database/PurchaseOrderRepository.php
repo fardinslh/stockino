@@ -5,14 +5,24 @@ namespace Stockino\Database;
 use Stockino\Suppliers\PurchasingQuantity;
 
 final class PurchaseOrderRepository {
+	private readonly \Closure $number_finalizer;
+
+	public function __construct( ?\Closure $number_finalizer = null ) {
+		$this->number_finalizer = $number_finalizer ?? static function ( string $table, int $id, string $column, string $number ): bool {
+			global $wpdb;
+			return false !== $wpdb->update( $table, array( $column => $number ), array( 'id' => $id ) );
+		};
+	}
+
 	/** @param array<string,mixed> $data */
 	public function create( array $data ): int {
 		global $wpdb;
-		$now  = current_time( 'mysql', true );
-		$data = array_merge(
+		$now       = current_time( 'mysql', true );
+		$temporary = 'PO-PENDING-' . wp_generate_uuid4();
+		$data      = array_merge(
 			$data,
 			array(
-				'po_number'  => 'PO-PENDING-' . wp_generate_uuid4(),
+				'po_number'  => $temporary,
 				'status'     => 'draft',
 				'created_by' => get_current_user_id() > 0 ? get_current_user_id() : null,
 				'created_at' => $now,
@@ -24,8 +34,21 @@ final class PurchaseOrderRepository {
 		}
 		$id        = (int) $wpdb->insert_id;
 		$po_number = sprintf( 'PO-%06d', $id );
-		if ( false === $wpdb->update( $this->orders_table(), array( 'po_number' => $po_number ), array( 'id' => $id ) ) ) {
-			throw new \RuntimeException( 'purchase_order_number_failed' );
+		try {
+			$finalized = ( $this->number_finalizer )( $this->orders_table(), $id, 'po_number', $po_number );
+		} catch ( \Throwable $exception ) {
+			$finalized = false;
+		}
+		if ( ! $finalized ) {
+			$deleted = $wpdb->delete(
+				$this->orders_table(),
+				array(
+					'id'        => $id,
+					'po_number' => $temporary,
+					'status'    => 'draft',
+				)
+			);
+			throw new \RuntimeException( 1 === $deleted ? 'purchase_order_number_failed' : 'purchase_order_number_ambiguous' );
 		}
 		return $id;
 	}

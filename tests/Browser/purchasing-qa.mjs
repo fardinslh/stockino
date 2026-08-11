@@ -26,7 +26,9 @@ try {
 
   await page.locator('.stockino-header-action').click();
   await page.locator('#stockino-create-po').waitFor();
-  await page.locator('.stockino-dialog select').selectOption({ label: 'تأمین کالای سپاهان' });
+  const supplierSearch = page.locator('.stockino-dialog').getByRole('combobox', { name: 'جستجوی تأمین‌کننده فعال' });
+  await Promise.all([page.waitForResponse((response) => decodeURIComponent(response.url()).includes('search=SUP-001') && response.status() < 400), supplierSearch.fill('SUP-001')]);
+  await supplierSearch.press('Enter');
   await page.locator('.stockino-dialog input[dir=ltr]').first().fill(`BROWSER-${Date.now()}`);
   await Promise.all([apiResponse('/stockino/v1/purchase-orders', 'POST'), page.locator('.stockino-dialog form footer .stockino-button-primary').click()]);
   await page.locator('#stockino-po-detail').waitFor();
