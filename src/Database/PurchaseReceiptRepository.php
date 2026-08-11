@@ -2,6 +2,7 @@
 
 namespace Stockino\Database;
 
+use Stockino\Costing\FixedDecimal;
 use Stockino\Suppliers\PurchasingQuantity;
 
 final class PurchaseReceiptRepository {
@@ -229,9 +230,14 @@ final class PurchaseReceiptRepository {
 			'product_id'             => (int) $row['product_id'],
 			'stock_owner_id'         => (int) $row['stock_owner_id'],
 			'quantity_received'      => PurchasingQuantity::normalize_nonnegative( $row['quantity_received'] ) ?? '0.000000',
-			'quantity_before'        => null !== $row['quantity_before'] ? PurchasingQuantity::normalize_nonnegative( $row['quantity_before'] ) : null,
-			'quantity_after'         => null !== $row['quantity_after'] ? PurchasingQuantity::normalize_nonnegative( $row['quantity_after'] ) : null,
+			'quantity_before'        => null !== $row['quantity_before'] ? FixedDecimal::normalize_quantity( $row['quantity_before'] ) : null,
+			'quantity_after'         => null !== $row['quantity_after'] ? FixedDecimal::normalize_quantity( $row['quantity_after'] ) : null,
 			'movement_id'            => $row['movement_id'] ? (int) $row['movement_id'] : null,
+			'actual_unit_cost'       => null !== $row['actual_unit_cost'] ? (string) $row['actual_unit_cost'] : null,
+			'currency_snapshot'      => null !== $row['currency_snapshot'] ? (string) $row['currency_snapshot'] : null,
+			'cost_movement_id'       => $row['cost_movement_id'] ? (int) $row['cost_movement_id'] : null,
+			'costing_status'         => (string) $row['costing_status'],
+			'cost_error'             => null !== $row['cost_error'] ? (string) $row['cost_error'] : null,
 			'status'                 => (string) $row['status'],
 			'error_code'             => null !== $row['error_code'] ? (string) $row['error_code'] : null,
 			'error_message'          => null !== $row['error_message'] ? (string) $row['error_message'] : null,

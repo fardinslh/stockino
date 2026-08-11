@@ -57,8 +57,9 @@ final class PurchaseFixtureCommand {
 			$item     = $this->orders->add_item(
 				$order['id'],
 				array(
-					'product_id'       => $relation['product_id'],
-					'ordered_quantity' => '4',
+					'product_id'        => $relation['product_id'],
+					'ordered_quantity'  => '4',
+					'ordered_unit_cost' => '10.000000',
 				)
 			);
 			if ( is_wp_error( $item ) ) {
@@ -78,8 +79,9 @@ final class PurchaseFixtureCommand {
 						'note'            => 'رسید نمایشی تولیدشده از مسیر واقعی دریافت',
 						'items'           => array(
 							array(
-								'item_id'  => $item['id'],
-								'quantity' => $quantity,
+								'item_id'          => $item['id'],
+								'quantity'         => $quantity,
+								'actual_unit_cost' => '10.000000',
 							),
 						),
 					)

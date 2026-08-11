@@ -38,13 +38,14 @@ try {
   await productSearch.fill('STK-101');
   await apiResponse('/products');
   await page.locator('.stockino-picker-results button').first().click();
-  await page.locator('.stockino-link-dialog input[inputmode=decimal]').fill('2');
+  await page.locator('.stockino-link-dialog input[inputmode=decimal]').first().fill('2');
+  await page.locator('.stockino-link-dialog input[inputmode=decimal]').nth(1).fill('12.50');
   await Promise.all([apiResponse('/items', 'POST'), page.locator('.stockino-link-dialog form footer .stockino-button-primary').click()]);
   await page.getByRole('button', { name: 'ثبت سفارش' }).click();
   await apiResponse('/mark-ordered', 'POST');
   await page.getByRole('button', { name: /دریافت کالا/ }).click();
   await page.locator('#stockino-receive').waitFor();
-  await page.locator('.stockino-receive-lines input').first().fill('1');
+  await page.locator('.stockino-costed-receive-lines input[aria-label^="دریافت "]').first().fill('1');
   await Promise.all([apiResponse('/receipts', 'POST'), page.locator('.stockino-receive-dialog form footer .stockino-button-primary').click()]);
   await page.locator('.stockino-purchase-drawer .stockino-po-status.is-partial').waitFor();
   await page.locator('.stockino-receipt-history > button').first().click();

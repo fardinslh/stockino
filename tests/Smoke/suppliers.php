@@ -275,7 +275,7 @@ $assert( ! in_array( $parent_id, $remaining_ids, true ) && ! in_array( $variatio
 $movement_rows = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', $movement_table ) );
 update_option( 'stockino_db_version', '1.0.0' );
 Stockino\Database\Installer::activate();
-$assert( '3.0.0' === get_option( 'stockino_db_version' ) && $movement_rows === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', $movement_table ) ), 'The cumulative migration preserves movement data and advances to the Phase 3 schema version.' );
+$assert( '4.0.0' === get_option( 'stockino_db_version' ) && $movement_rows === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', $movement_table ) ), 'The cumulative migration preserves movement data and advances to the Phase 4 schema version.' );
 
 $wpdb->delete( $relation_table, array( 'supplier_id' => $supplier_id ) );
 $wpdb->delete( $supplier_table, array( 'id' => $supplier_id ) );

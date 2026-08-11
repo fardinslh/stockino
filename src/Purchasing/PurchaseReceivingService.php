@@ -2,6 +2,9 @@
 
 namespace Stockino\Purchasing;
 
+use Stockino\Costing\CostLock;
+use Stockino\Costing\FixedDecimal;
+use Stockino\Costing\InventoryCostService;
 use Stockino\Database\PurchaseOrderRepository;
 use Stockino\Database\PurchaseReceiptRepository;
 use Stockino\Inventory\InventoryMutation;
@@ -16,7 +19,9 @@ final class PurchaseReceivingService {
 		private readonly PurchaseOrderRepository $orders,
 		private readonly PurchaseReceiptRepository $receipts,
 		private readonly InventoryMutation $mutations,
-		private readonly ReceiveLock $lock
+		private readonly ReceiveLock $lock,
+		private readonly InventoryCostService $costing,
+		private readonly CostLock $cost_lock
 	) {}
 
 	/** @param array<string,mixed> $input @return array<string,mixed>|WP_Error */
@@ -70,12 +75,27 @@ final class PurchaseReceivingService {
 				$this->receipts->delete_processing( $receipt_id );
 				return $this->error( 'stockino_purchase_order_not_receivable', 'This purchase order cannot receive goods in its current state.', 409 );
 			}
-			$validated = $this->validate_lines( $order_id, $input['items'] ?? array() );
+			$validated = $this->validate_lines( $order_id, $input['items'] ?? array(), (string) $order['currency_snapshot'] );
 			if ( is_wp_error( $validated ) ) {
 				$this->receipts->delete_processing( $receipt_id );
 				return $validated;
 			}
-			return $this->process( $order_id, $receipt_id, $validated, $note );
+			$owner_ids = array_map( static fn( array $line ): int => $line['owner']->get_id(), $validated );
+			if ( ! $this->cost_lock->acquire_many( $owner_ids ) ) {
+				$this->receipts->delete_processing( $receipt_id );
+				return $this->error( 'stockino_cost_owner_busy', 'Another receipt is costing one of these stock owners. Try again shortly.', 409 );
+			}
+			try {
+				foreach ( $validated as $line ) {
+					if ( ! $this->costing->currency_is_compatible( $line['owner']->get_id(), $line['currency_snapshot'] ) ) {
+						$this->receipts->delete_processing( $receipt_id );
+						return $this->error( 'stockino_cost_currency_mismatch', 'The store currency changed after this stock owner was costed. Record an explicit cost correction before receiving in the new currency.', 409 );
+					}
+				}
+				return $this->process( $order_id, $receipt_id, $validated, $note );
+			} finally {
+				$this->cost_lock->release_many( $owner_ids );
+			}
 		} finally {
 			$this->lock->release( $order_id );
 		}
@@ -93,7 +113,7 @@ final class PurchaseReceivingService {
 	}
 
 	/** @param mixed $raw_lines @return array<int,array<string,mixed>>|WP_Error */
-	private function validate_lines( int $order_id, mixed $raw_lines ) {
+	private function validate_lines( int $order_id, mixed $raw_lines, string $currency_snapshot ) {
 		if ( ! is_array( $raw_lines ) ) {
 			return $this->quantity_error();
 		}
@@ -140,11 +160,18 @@ final class PurchaseReceivingService {
 			if ( $effective !== $quantity ) {
 				return $this->error( 'stockino_receipt_stock_precision', 'WooCommerce cannot apply the requested receipt quantity without changing its precision.', 409 );
 			}
+			$cost_value = array_key_exists( 'actual_unit_cost', $raw ) ? $raw['actual_unit_cost'] : $item['ordered_unit_cost'];
+			$unit_cost  = FixedDecimal::normalize_cost( $cost_value );
+			if ( null === $unit_cost ) {
+				return $this->error( 'stockino_invalid_actual_unit_cost', 'Every received line requires an explicit non-negative actual unit cost with no more than six decimal places.', 400 );
+			}
 			$validated[] = array(
-				'item'     => $item,
-				'product'  => $product,
-				'owner'    => $owner,
-				'quantity' => $quantity,
+				'item'              => $item,
+				'product'           => $product,
+				'owner'             => $owner,
+				'quantity'          => $quantity,
+				'unit_cost'         => $unit_cost,
+				'currency_snapshot' => $currency_snapshot,
 			);
 		}
 		return array() === $validated ? $this->quantity_error() : $validated;
@@ -163,6 +190,9 @@ final class PurchaseReceivingService {
 							'product_id'             => $line['item']['product_id'],
 							'stock_owner_id'         => $line['owner']->get_id(),
 							'quantity_received'      => $line['quantity'],
+							'actual_unit_cost'       => $line['unit_cost'],
+							'currency_snapshot'      => $line['currency_snapshot'],
+							'costing_status'         => 'pending',
 						)
 					),
 					'line' => $line,
@@ -221,6 +251,8 @@ final class PurchaseReceivingService {
 							'quantity_after'  => is_array( $data ) ? ( $data['quantity_after'] ?? $data['observed_quantity_after'] ?? null ) : null,
 							'error_code'      => $result->get_error_code(),
 							'error_message'   => $this->mutation_error_message( $result, $outcome ),
+							'costing_status'  => $changed || $uncertain ? 'requires_attention' : 'not_applied',
+							'cost_error'      => $changed || $uncertain ? 'Stock costing requires manual reconciliation because the stock mutation was not a confirmed normal receipt.' : null,
 						)
 					);
 					$this->fail_remaining( $pending, $index + 1 );
@@ -239,6 +271,8 @@ final class PurchaseReceivingService {
 							'movement_id'     => $result['movement_id'],
 							'error_code'      => 'stockino_received_quantity_failed',
 							'error_message'   => 'Stock changed but the purchase-order received quantity could not be updated.',
+							'costing_status'  => 'requires_attention',
+							'cost_error'      => 'Costing was not applied because the purchase-order accounting update failed after stock changed.',
 						)
 					);
 					$this->fail_remaining( $pending, $index + 1 );
@@ -248,10 +282,57 @@ final class PurchaseReceivingService {
 				$this->receipts->update_item(
 					$entry['id'],
 					array(
-						'status'          => 'completed',
+						'status'          => 'pending',
 						'quantity_before' => $result['quantity_before'],
 						'quantity_after'  => $result['quantity_after'],
 						'movement_id'     => $result['movement_id'],
+						'costing_status'  => 'processing',
+					)
+				);
+				try {
+					$is_variant = $product->is_type( 'variation' );
+					$cost       = $this->costing->record_receipt(
+						array(
+							'stock_owner_id'         => $owner->get_id(),
+							'stock_owner_name'       => $owner->get_name(),
+							'source_product_id'      => $is_variant ? $product->get_parent_id() : $product->get_id(),
+							'source_variation_id'    => $is_variant ? $product->get_id() : null,
+							'source_product_name'    => $product->get_name(),
+							'source_sku'             => $product->get_sku() ? $product->get_sku() : null,
+							'purchase_order_id'      => $order_id,
+							'purchase_order_item_id' => $line['item']['id'],
+							'receipt_id'             => $receipt_id,
+							'receipt_item_id'        => $entry['id'],
+							'quantity_received'      => $line['quantity'],
+							'actual_unit_cost'       => $line['unit_cost'],
+							'quantity_before'        => $result['quantity_before'],
+							'quantity_after'         => $result['quantity_after'],
+							'currency_snapshot'      => $line['currency_snapshot'],
+						)
+					);
+				} catch ( \Throwable $exception ) {
+					do_action( 'stockino_purchase_cost_persistence_failed', $receipt_id, $entry['id'], $exception );
+					$this->receipts->update_item(
+						$entry['id'],
+						array(
+							'status'         => 'requires_attention',
+							'costing_status' => 'requires_attention',
+							'cost_error'     => substr( 'Stock changed, but costing could not be persisted: ' . $exception->getMessage(), 0, 2000 ),
+							'error_code'     => 'stockino_cost_persistence_failed',
+							'error_message'  => 'Stock changed, but weighted-average costing requires manual reconciliation. Do not replay this receipt.',
+						)
+					);
+					$this->fail_remaining( $pending, $index + 1 );
+					$this->derive_order_status( $order_id );
+					$this->mark_attention( $receipt_id );
+					return $this->attention_error( $receipt_id, InventoryMutation::OUTCOME_CHANGED );
+				}
+				$this->receipts->update_item(
+					$entry['id'],
+					array(
+						'status'           => 'completed',
+						'costing_status'   => 'completed',
+						'cost_movement_id' => $cost['movement_id'],
 					)
 				);
 			}
@@ -282,9 +363,10 @@ final class PurchaseReceivingService {
 			$this->receipts->update_item(
 				$pending[ $index ]['id'],
 				array(
-					'status'        => 'failed',
-					'error_code'    => 'stockino_receipt_halted',
-					'error_message' => 'This line was not attempted because an earlier line requires attention.',
+					'status'         => 'failed',
+					'error_code'     => 'stockino_receipt_halted',
+					'error_message'  => 'This line was not attempted because an earlier line requires attention.',
+					'costing_status' => 'not_applied',
 				)
 			);
 		}

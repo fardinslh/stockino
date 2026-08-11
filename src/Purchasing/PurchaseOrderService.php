@@ -5,6 +5,7 @@ namespace Stockino\Purchasing;
 use Stockino\Database\PurchaseOrderRepository;
 use Stockino\Database\SupplierProductRepository;
 use Stockino\Database\SupplierRepository;
+use Stockino\Costing\FixedDecimal;
 use Stockino\Suppliers\PurchasingQuantity;
 use WC_Product;
 use WP_Error;
@@ -54,6 +55,7 @@ final class PurchaseOrderService {
 			'supplier_id'            => (int) $supplier['id'],
 			'supplier_name_snapshot' => $supplier['name'],
 			'supplier_code_snapshot' => $supplier['code'],
+			'currency_snapshot'      => get_woocommerce_currency(),
 		);
 		try {
 			$id = $this->orders->create( $data );
@@ -129,6 +131,10 @@ final class PurchaseOrderService {
 		if ( null === $quantity ) {
 			return $this->quantity_error();
 		}
+		$unit_cost = $this->unit_cost( $input['ordered_unit_cost'] ?? null );
+		if ( is_wp_error( $unit_cost ) ) {
+			return $unit_cost;
+		}
 		$is_variation = $product->is_type( 'variation' );
 		$data         = array(
 			'purchase_order_id'     => $order_id,
@@ -139,6 +145,7 @@ final class PurchaseOrderService {
 			'variation_snapshot'    => $is_variation ? wp_strip_all_tags( wc_get_formatted_variation( $product, true, false, true ) ) : null,
 			'supplier_sku_snapshot' => $relation['supplier_sku'],
 			'ordered_quantity'      => $quantity,
+			'ordered_unit_cost'     => $unit_cost,
 			'notes'                 => $this->notes( $input['notes'] ?? '' ),
 		);
 		try {
@@ -176,6 +183,13 @@ final class PurchaseOrderService {
 		}
 		if ( array_key_exists( 'notes', $input ) ) {
 			$data['notes'] = $this->notes( $input['notes'] );
+		}
+		if ( array_key_exists( 'ordered_unit_cost', $input ) ) {
+			$unit_cost = $this->unit_cost( $input['ordered_unit_cost'] );
+			if ( is_wp_error( $unit_cost ) ) {
+				return $unit_cost;
+			}
+			$data['ordered_unit_cost'] = $unit_cost;
 		}
 		try {
 			$this->orders->update_item( $item_id, $data );
@@ -318,6 +332,17 @@ final class PurchaseOrderService {
 
 	private function quantity_error(): WP_Error {
 		return $this->error( 'stockino_invalid_purchase_quantity', 'Enter a positive quantity within DECIMAL(20,6) precision.', 400 );
+	}
+
+	/** @return string|null|WP_Error */
+	private function unit_cost( mixed $value ) {
+		if ( null === $value || '' === trim( (string) $value ) ) {
+			return null;
+		}
+		$cost = FixedDecimal::normalize_cost( $value );
+		return null === $cost
+			? $this->error( 'stockino_invalid_unit_cost', 'Enter a non-negative unit cost with no more than six decimal places.', 400 )
+			: $cost;
 	}
 
 	private function storage_error(): WP_Error {

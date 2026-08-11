@@ -4,11 +4,16 @@ namespace Stockino;
 
 use Stockino\Admin\AdminPage;
 use Stockino\Database\Installer;
+use Stockino\Database\InventoryCostRepository;
 use Stockino\Database\PurchaseOrderRepository;
 use Stockino\Database\PurchaseReceiptRepository;
 use Stockino\Database\StockMovementRepository;
 use Stockino\Database\SupplierProductRepository;
 use Stockino\Database\SupplierRepository;
+use Stockino\Database\ValuationRepository;
+use Stockino\Costing\InventoryCostService;
+use Stockino\Costing\MysqlCostLock;
+use Stockino\Costing\ValuationService;
 use Stockino\Inventory\ExternalStockTracker;
 use Stockino\Inventory\InventoryService;
 use Stockino\Inventory\InventoryQuery;
@@ -18,6 +23,7 @@ use Stockino\Inventory\StockAdjustmentService;
 use Stockino\REST\RestApi;
 use Stockino\REST\PurchaseOrderRestApi;
 use Stockino\REST\SupplierRestApi;
+use Stockino\REST\ValuationRestApi;
 use Stockino\Purchasing\MysqlReceiveLock;
 use Stockino\Purchasing\PurchaseOrderService;
 use Stockino\Purchasing\PurchaseReceivingService;
@@ -63,12 +69,16 @@ final class Plugin {
 		$orders            = new PurchaseOrderRepository();
 		$receipts          = new PurchaseReceiptRepository();
 		$operation_lock    = new MysqlReceiveLock();
+		$cost_lock         = new MysqlCostLock();
+		$costs             = new InventoryCostRepository();
+		$cost_service      = new InventoryCostService( $costs, $cost_lock );
 		$order_service     = new PurchaseOrderService( $orders, $suppliers, $relations, $operation_lock );
-		$receiving_service = new PurchaseReceivingService( $orders, $receipts, $mutations, $operation_lock );
+		$receiving_service = new PurchaseReceivingService( $orders, $receipts, $mutations, $operation_lock, $cost_service, $cost_lock );
 		( new PurchaseOrderRestApi(
 			$order_service,
 			$receiving_service
 		) )->register();
+		( new ValuationRestApi( new ValuationService( new ValuationRepository(), $costs, $cost_service ) ) )->register();
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			( new \Stockino\Support\FixtureCommand() )->register();

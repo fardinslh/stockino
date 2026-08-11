@@ -6,6 +6,7 @@ final class AdminPage {
 	private string $inventory_hook  = '';
 	private string $supplier_hook   = '';
 	private string $purchasing_hook = '';
+	private string $valuation_hook  = '';
 
 	public function register(): void {
 		add_action( 'admin_menu', array( $this, 'add_menu' ) );
@@ -50,6 +51,15 @@ final class AdminPage {
 			'stockino-purchase-orders',
 			array( $this, 'render' )
 		);
+
+		$this->valuation_hook = (string) add_submenu_page(
+			'stockino',
+			__( 'Inventory Valuation', 'stockino' ),
+			__( 'Valuation', 'stockino' ),
+			'manage_woocommerce',
+			'stockino-valuation',
+			array( $this, 'render' )
+		);
 	}
 
 	public function render(): void {
@@ -57,7 +67,7 @@ final class AdminPage {
 	}
 
 	public function enqueue_assets( string $hook_suffix ): void {
-		if ( ! in_array( $hook_suffix, array( $this->inventory_hook, $this->supplier_hook, $this->purchasing_hook ), true ) ) {
+		if ( ! in_array( $hook_suffix, array( $this->inventory_hook, $this->supplier_hook, $this->purchasing_hook, $this->valuation_hook ), true ) ) {
 			return;
 		}
 
@@ -80,7 +90,7 @@ final class AdminPage {
 				'nonce'    => wp_create_nonce( 'wp_rest' ),
 				'locale'   => determine_locale(),
 				'currency' => get_woocommerce_currency(),
-				'page'     => $hook_suffix === $this->supplier_hook ? 'suppliers' : ( $hook_suffix === $this->purchasing_hook ? 'purchase-orders' : 'inventory' ),
+				'page'     => $hook_suffix === $this->supplier_hook ? 'suppliers' : ( $hook_suffix === $this->purchasing_hook ? 'purchase-orders' : ( $hook_suffix === $this->valuation_hook ? 'valuation' : 'inventory' ) ),
 				'adminUrl' => admin_url( 'admin.php' ),
 			)
 		);
@@ -109,6 +119,14 @@ final class AdminPage {
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Trusted local build manifest.
 		$manifest = json_decode( (string) file_get_contents( $manifest_path ), true );
 		$entry    = is_array( $manifest ) ? ( $manifest['admin/src/main.tsx'] ?? null ) : null;
+		if ( null === $entry && is_array( $manifest ) ) {
+			foreach ( $manifest as $candidate ) {
+				if ( is_array( $candidate ) && ! empty( $candidate['isEntry'] ) && isset( $candidate['file'] ) ) {
+					$entry = $candidate;
+					break;
+				}
+			}
+		}
 
 		return is_array( $entry ) && isset( $entry['file'] ) ? $entry : null;
 	}

@@ -12,6 +12,14 @@ $assert        = static function ( bool $condition, string $message ): void {
 	WP_CLI::log( 'PASS: ' . $message );
 };
 $request       = static function ( string $method, string $route, array $params = array() ) {
+	if ( 'POST' === $method && str_ends_with( $route, '/receipts' ) && isset( $params['items'] ) && is_array( $params['items'] ) ) {
+		foreach ( $params['items'] as &$line ) {
+			if ( is_array( $line ) && ! array_key_exists( 'actual_unit_cost', $line ) ) {
+				$line['actual_unit_cost'] = '10.000000';
+			}
+		}
+		unset( $line );
+	}
 	$rest = new WP_REST_Request( $method, $route );
 	if ( 'GET' === $method ) {
 		$rest->set_query_params( $params );
@@ -33,6 +41,7 @@ $items_table         = $wpdb->prefix . 'stockino_purchase_order_items';
 $receipts_table      = $wpdb->prefix . 'stockino_purchase_receipts';
 $receipt_items_table = $wpdb->prefix . 'stockino_purchase_receipt_items';
 $movements_table     = $wpdb->prefix . 'stockino_stock_movements';
+$costs_table         = $wpdb->prefix . 'stockino_inventory_costs';
 $suppliers_table     = $wpdb->prefix . 'stockino_suppliers';
 $relations_table     = $wpdb->prefix . 'stockino_supplier_products';
 
@@ -574,6 +583,8 @@ $assert(
 );
 
 $receipt_repository = new Stockino\Database\PurchaseReceiptRepository();
+$cost_lock          = new Stockino\Costing\MysqlCostLock();
+$cost_service       = new Stockino\Costing\InventoryCostService( new Stockino\Database\InventoryCostRepository(), $cost_lock );
 $processing_key     = 'processing-' . wp_generate_uuid4();
 $processing_id      = $receipt_repository->create(
 	array(
@@ -635,7 +646,7 @@ $failed_mutation   = new class() implements Stockino\Inventory\InventoryMutation
 		);
 	}
 };
-$failure_receiving = new Stockino\Purchasing\PurchaseReceivingService( new Stockino\Database\PurchaseOrderRepository(), $receipt_repository, $failed_mutation, new Stockino\Purchasing\MysqlReceiveLock() );
+$failure_receiving = new Stockino\Purchasing\PurchaseReceivingService( new Stockino\Database\PurchaseOrderRepository(), $receipt_repository, $failed_mutation, new Stockino\Purchasing\MysqlReceiveLock(), $cost_service, $cost_lock );
 $attention_key     = 'attention-' . wp_generate_uuid4();
 $attention         = $failure_receiving->receive(
 	$failure_order['id'],
@@ -643,15 +654,16 @@ $attention         = $failure_receiving->receive(
 		'idempotency_key' => $attention_key,
 		'items'           => array(
 			array(
-				'item_id'  => $failure_line['id'],
-				'quantity' => '1',
+				'item_id'          => $failure_line['id'],
+				'quantity'         => '1',
+				'actual_unit_cost' => '10.000000',
 			),
 		),
 	)
 );
 $attention_receipt = $receipt_repository->find_by_key( $attention_key );
 $failure_detail    = $request( 'GET', "/stockino/v1/purchase-orders/{$failure_order['id']}" )->get_data();
-$assert( is_wp_error( $attention ) && 'requires_attention' === $attention_receipt['status'] && 'requires_attention' === $attention_receipt['items'][0]['status'], 'A post-stock persistence failure creates an explicit requires-attention receipt and line.' );
+$assert( is_wp_error( $attention ) && 'requires_attention' === $attention_receipt['status'] && 'requires_attention' === $attention_receipt['items'][0]['status'] && 'requires_attention' === $attention_receipt['items'][0]['costing_status'], 'A post-stock persistence failure creates an explicit requires-attention receipt, line, and costing state.' );
 $assert( '1.000000' === $failure_detail['received_units'], 'A known stock-changed failure accounts for the quantity to prevent blind duplicate receiving.' );
 $assert(
 	is_wp_error(
@@ -683,8 +695,9 @@ $uncertain_line  = $request(
 	)
 )->get_data();
 $request( 'POST', "/stockino/v1/purchase-orders/{$uncertain_order['id']}/mark-ordered" );
-$uncertain_before    = (float) wc_get_product( $simple_id )->get_stock_quantity();
-$uncertain_mutation  = new class() implements Stockino\Inventory\InventoryMutation {
+$uncertain_before      = (float) wc_get_product( $simple_id )->get_stock_quantity();
+$uncertain_cost_before = $wpdb->get_var( $wpdb->prepare( 'SELECT average_unit_cost FROM %i WHERE stock_owner_id = %d', $costs_table, $simple_id ) );
+$uncertain_mutation    = new class() implements Stockino\Inventory\InventoryMutation {
 	public function mutate( WC_Product $stock_target, string $mode, float $quantity, array $movement ) {
 		$before = (float) $stock_target->get_stock_quantity();
 		wc_update_product_stock( $stock_target, $quantity, 'increase' );
@@ -702,23 +715,25 @@ $uncertain_mutation  = new class() implements Stockino\Inventory\InventoryMutati
 		);
 	}
 };
-$uncertain_receiving = new Stockino\Purchasing\PurchaseReceivingService( new Stockino\Database\PurchaseOrderRepository(), $receipt_repository, $uncertain_mutation, new Stockino\Purchasing\MysqlReceiveLock() );
-$uncertain_key       = 'uncertain-' . wp_generate_uuid4();
-$uncertain_result    = $uncertain_receiving->receive(
+$uncertain_receiving   = new Stockino\Purchasing\PurchaseReceivingService( new Stockino\Database\PurchaseOrderRepository(), $receipt_repository, $uncertain_mutation, new Stockino\Purchasing\MysqlReceiveLock(), $cost_service, $cost_lock );
+$uncertain_key         = 'uncertain-' . wp_generate_uuid4();
+$uncertain_result      = $uncertain_receiving->receive(
 	$uncertain_order['id'],
 	array(
 		'idempotency_key' => $uncertain_key,
 		'items'           => array(
 			array(
-				'item_id'  => $uncertain_line['id'],
-				'quantity' => '1',
+				'item_id'          => $uncertain_line['id'],
+				'quantity'         => '1',
+				'actual_unit_cost' => '10.000000',
 			),
 		),
 	)
 );
-$uncertain_receipt   = $receipt_repository->find_by_key( $uncertain_key );
-$uncertain_detail    = $request( 'GET', "/stockino/v1/purchase-orders/{$uncertain_order['id']}" )->get_data();
+$uncertain_receipt     = $receipt_repository->find_by_key( $uncertain_key );
+$uncertain_detail      = $request( 'GET', "/stockino/v1/purchase-orders/{$uncertain_order['id']}" )->get_data();
 $assert( is_wp_error( $uncertain_result ) && Stockino\Inventory\InventoryMutation::OUTCOME_UNCERTAIN === $uncertain_result->get_error_data()['mutation_outcome'] && 'requires_attention' === $uncertain_receipt['items'][0]['status'], 'An unprovable post-write exception records an uncertain requires-attention receipt line.' );
+$assert( $uncertain_cost_before === $wpdb->get_var( $wpdb->prepare( 'SELECT average_unit_cost FROM %i WHERE stock_owner_id = %d', $costs_table, $simple_id ) ) && 'requires_attention' === $uncertain_receipt['items'][0]['costing_status'], 'An uncertain stock mutation does not advance weighted-average cost and visibly requires cost reconciliation.' );
 $assert( $same_quantity( $uncertain_before + 1, (float) wc_get_product( $simple_id )->get_stock_quantity() ) && '0.000000' === $uncertain_detail['received_units'], 'An uncertain mutation is not mislabeled as a confirmed PO receipt and is never auto-reversed.' );
 $assert( '0.000000' === $uncertain_receipt['confirmed_units'] && '1.000000' === $uncertain_receipt['attention_units'] && '0.000000' === $uncertain_receipt['failed_units'], 'Receipt totals expose uncertain attention quantity separately from confirmed and failed quantity.' );
 $uncertain_retry_stock = (float) wc_get_product( $simple_id )->get_stock_quantity();
@@ -735,8 +750,9 @@ $new_token_retry       = $uncertain_receiving->receive(
 		'idempotency_key' => 'uncertain-new-' . wp_generate_uuid4(),
 		'items'           => array(
 			array(
-				'item_id'  => $uncertain_line['id'],
-				'quantity' => '1',
+				'item_id'          => $uncertain_line['id'],
+				'quantity'         => '1',
+				'actual_unit_cost' => '10.000000',
 			),
 		),
 	)
@@ -775,7 +791,7 @@ $blocked_lock      = new class() implements Stockino\Purchasing\ReceiveLock {
 		return false; }
 	public function release( int $purchase_order_id ): void {}
 };
-$blocked_receiving = new Stockino\Purchasing\PurchaseReceivingService( new Stockino\Database\PurchaseOrderRepository(), $receipt_repository, $failed_mutation, $blocked_lock );
+$blocked_receiving = new Stockino\Purchasing\PurchaseReceivingService( new Stockino\Database\PurchaseOrderRepository(), $receipt_repository, $failed_mutation, $blocked_lock, $cost_service, $cost_lock );
 $blocked_key       = 'blocked-' . wp_generate_uuid4();
 $blocked           = $blocked_receiving->receive(
 	$deleted_order['id'],

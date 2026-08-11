@@ -26,6 +26,9 @@ final class Installer {
 		if ( version_compare( $current, '3.0.0', '<' ) ) {
 			self::create_purchasing_tables();
 		}
+		if ( version_compare( $current, '4.0.0', '<' ) ) {
+			self::create_costing_tables();
+		}
 
 		update_option( self::OPTION, STOCKINO_DB_VERSION, false );
 	}
@@ -204,5 +207,93 @@ final class Installer {
 		) {$charset};";
 
 		dbDelta( $sql );
+	}
+
+	private static function create_costing_tables(): void {
+		global $wpdb;
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+		$orders        = $wpdb->prefix . 'stockino_purchase_orders';
+		$order_items   = $wpdb->prefix . 'stockino_purchase_order_items';
+		$receipt_items = $wpdb->prefix . 'stockino_purchase_receipt_items';
+		$costs         = $wpdb->prefix . 'stockino_inventory_costs';
+		$movements     = $wpdb->prefix . 'stockino_inventory_cost_movements';
+		$charset       = $wpdb->get_charset_collate();
+		$sql           = "CREATE TABLE {$orders} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			currency_snapshot varchar(10) NULL,
+			PRIMARY KEY  (id)
+		) {$charset};
+		CREATE TABLE {$order_items} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			ordered_unit_cost decimal(20,6) NULL,
+			PRIMARY KEY  (id)
+		) {$charset};
+		CREATE TABLE {$receipt_items} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			actual_unit_cost decimal(20,6) NULL,
+			currency_snapshot varchar(10) NULL,
+			cost_movement_id bigint(20) unsigned NULL,
+			costing_status varchar(30) NOT NULL DEFAULT 'pending',
+			cost_error text NULL,
+			PRIMARY KEY  (id),
+			KEY cost_movement_id (cost_movement_id),
+			KEY costing_status (costing_status)
+		) {$charset};
+		CREATE TABLE {$costs} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			stock_owner_id bigint(20) unsigned NOT NULL,
+			average_unit_cost decimal(20,6) NOT NULL,
+			currency_snapshot varchar(10) NOT NULL,
+			last_receipt_item_id bigint(20) unsigned NULL,
+			created_at datetime NOT NULL,
+			updated_at datetime NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY stock_owner_id (stock_owner_id),
+			KEY last_receipt_item_id (last_receipt_item_id),
+			KEY updated_at (updated_at)
+		) {$charset};
+		CREATE TABLE {$movements} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			stock_owner_id bigint(20) unsigned NOT NULL,
+			stock_owner_name_snapshot varchar(255) NOT NULL,
+			source_product_id bigint(20) unsigned NOT NULL,
+			source_variation_id bigint(20) unsigned NULL,
+			source_product_name_snapshot varchar(255) NOT NULL,
+			source_sku_snapshot varchar(190) NULL,
+			purchase_order_id bigint(20) unsigned NULL,
+			purchase_order_item_id bigint(20) unsigned NULL,
+			receipt_id bigint(20) unsigned NULL,
+			receipt_item_id bigint(20) unsigned NULL,
+			movement_type varchar(30) NOT NULL,
+			quantity_received decimal(20,6) NOT NULL DEFAULT 0,
+			unit_cost decimal(20,6) NOT NULL,
+			quantity_before decimal(20,6) NOT NULL,
+			quantity_after decimal(20,6) NOT NULL,
+			average_cost_before decimal(20,6) NULL,
+			average_cost_after decimal(20,6) NOT NULL,
+			inventory_value_before decimal(30,6) NOT NULL,
+			inventory_value_after decimal(30,6) NOT NULL,
+			currency_snapshot varchar(10) NOT NULL,
+			reason text NULL,
+			created_by bigint(20) unsigned NULL,
+			created_at datetime NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY receipt_item_id (receipt_item_id),
+			KEY owner_created (stock_owner_id, created_at),
+			KEY purchase_order_id (purchase_order_id),
+			KEY receipt_id (receipt_id),
+			KEY movement_type (movement_type)
+		) {$charset};";
+
+		dbDelta( $sql );
+		$wpdb->query(
+			$wpdb->prepare(
+				'UPDATE %i SET currency_snapshot = %s WHERE currency_snapshot IS NULL OR currency_snapshot = %s',
+				$orders,
+				get_woocommerce_currency(),
+				''
+			)
+		);
 	}
 }

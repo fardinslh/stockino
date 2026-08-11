@@ -252,6 +252,7 @@ final class PurchaseOrderRepository {
 			'ordered_at'         => $row['ordered_at'] ? $this->iso_date( (string) $row['ordered_at'] ) : null,
 			'completed_at'       => $row['completed_at'] ? $this->iso_date( (string) $row['completed_at'] ) : null,
 			'cancelled_at'       => $row['cancelled_at'] ? $this->iso_date( (string) $row['cancelled_at'] ) : null,
+			'currency_snapshot'  => $row['currency_snapshot'] ? (string) $row['currency_snapshot'] : get_woocommerce_currency(),
 		);
 	}
 
@@ -271,6 +272,7 @@ final class PurchaseOrderRepository {
 			'ordered_quantity'   => $ordered,
 			'received_quantity'  => $received,
 			'remaining_quantity' => PurchasingQuantity::subtract( $ordered, $received ),
+			'ordered_unit_cost'  => null !== $row['ordered_unit_cost'] ? (string) $row['ordered_unit_cost'] : null,
 			'notes'              => null !== $row['notes'] ? (string) $row['notes'] : null,
 			'created_at'         => $this->iso_date( (string) $row['created_at'] ),
 			'updated_at'         => $this->iso_date( (string) $row['updated_at'] ),

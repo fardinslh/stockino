@@ -11,6 +11,7 @@ import type {
 } from '@/types/inventory';
 import type { RelationshipInput, SupplierDetail, SupplierInput, SupplierListItem, SupplierPageData, SupplierParams, SupplierProduct, SupplierStats } from '@/types/suppliers';
 import type { PurchaseOrder, PurchaseOrderDetail, PurchaseOrderInput, PurchaseOrderItem, PurchaseOrderParams, PurchaseOrderStats, PurchasePage, PurchaseReceipt } from '@/types/purchasing';
+import type { CostHistoryPage, ValuationPageData, ValuationParams, ValuationRow, ValuationStats } from '@/types/valuation';
 
 interface ApiErrorBody { code?: string; message?: string }
 
@@ -90,10 +91,19 @@ export const purchasingApi = {
   update: (id: number, payload: Partial<PurchaseOrderInput>): Promise<PurchaseOrderDetail> => request(`purchase-orders/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   markOrdered: (id: number): Promise<PurchaseOrderDetail> => request(`purchase-orders/${id}/mark-ordered`, { method: 'POST' }),
   cancel: (id: number): Promise<PurchaseOrderDetail> => request(`purchase-orders/${id}/cancel`, { method: 'POST' }),
-  addItem: (id: number, payload: { product_id: number; ordered_quantity: string; notes?: string }): Promise<PurchaseOrderItem> => request(`purchase-orders/${id}/items`, { method: 'POST', body: JSON.stringify(payload) }),
-  updateItem: (id: number, itemId: number, payload: { ordered_quantity: string; notes?: string }): Promise<PurchaseOrderItem> => request(`purchase-orders/${id}/items/${itemId}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  addItem: (id: number, payload: { product_id: number; ordered_quantity: string; ordered_unit_cost: string | null; notes?: string }): Promise<PurchaseOrderItem> => request(`purchase-orders/${id}/items`, { method: 'POST', body: JSON.stringify(payload) }),
+  updateItem: (id: number, itemId: number, payload: { ordered_quantity: string; ordered_unit_cost?: string | null; notes?: string }): Promise<PurchaseOrderItem> => request(`purchase-orders/${id}/items/${itemId}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteItem: (id: number, itemId: number): Promise<{ deleted: true }> => request(`purchase-orders/${id}/items/${itemId}`, { method: 'DELETE' }),
   receipts: (id: number): Promise<PurchasePage<PurchaseReceipt>> => request(`purchase-orders/${id}/receipts?page=1&per_page=20`),
   receipt: (id: number): Promise<PurchaseReceipt> => request(`purchase-receipts/${id}`),
-  receive: (id: number, payload: { idempotency_key: string; note: string; items: { item_id: number; quantity: string }[] }): Promise<PurchaseReceipt> => request(`purchase-orders/${id}/receipts`, { method: 'POST', body: JSON.stringify(payload) }),
+  receive: (id: number, payload: { idempotency_key: string; note: string; items: { item_id: number; quantity: string; actual_unit_cost: string }[] }): Promise<PurchaseReceipt> => request(`purchase-orders/${id}/receipts`, { method: 'POST', body: JSON.stringify(payload) }),
+};
+
+export const valuationApi = {
+  list: (params: ValuationParams): Promise<ValuationPageData> => request(`valuation?${queryString(params)}`),
+  stats: (): Promise<ValuationStats> => request('valuation/stats'),
+  get: (id: number): Promise<ValuationRow> => request(`valuation/${id}`),
+  history: (id: number, page: number): Promise<CostHistoryPage> => request(`valuation/${id}/history?${queryString({ page, per_page: 20 })}`),
+  setInitial: (id: number, average_unit_cost: string, reason: string): Promise<unknown> => request(`valuation/${id}/initial-cost`, { method: 'POST', body: JSON.stringify({ average_unit_cost, reason }) }),
+  correct: (id: number, average_unit_cost: string, reason: string): Promise<unknown> => request(`valuation/${id}/corrections`, { method: 'POST', body: JSON.stringify({ average_unit_cost, reason }) }),
 };

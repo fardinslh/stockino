@@ -1,6 +1,6 @@
 # Stockino
 
-Stockino is an independent commercial WooCommerce operations plugin for purchasing and inventory. Version `0.1.0` contains the Phase 0 foundation, Phase 1 inventory dashboard and stock ledger, Phase 2 supplier management, and Phase 3 purchase orders and receiving. Valuation and reorder suggestions remain intentionally out of scope.
+Stockino is an independent commercial WooCommerce operations plugin for purchasing and inventory. Version `0.1.0` contains the Phase 0 foundation, Phase 1 inventory dashboard and stock ledger, Phase 2 supplier management, Phase 3 purchase orders and receiving, and Phase 4 moving-average inventory costing and valuation. Reorder intelligence remains intentionally out of scope.
 
 ## Requirements
 
@@ -35,6 +35,9 @@ docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smo
 docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/performance.php
 docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/suppliers.php
 docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/supplier-performance.php
+docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/purchasing.php
+docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/costing.php
+docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/valuation-performance.php
 ```
 
 Fixture generation is permitted only when `wp_get_environment_type()` is exactly `local` or `development`; staging, production, and unknown/default environments are rejected. `--start=<index>` supports extending an existing development catalog without reusing fixture SKUs.
@@ -45,6 +48,7 @@ Fixture generation is permitted only when `wp_get_environment_type()` is exactly
 - `src/Admin`: WordPress menu and page-scoped Vite asset loading.
 - `src/Database`: versioned, activation/upgrade-only migrations using `stockino_db_version`, plus the movement repository.
 - `src/Inventory`: WooCommerce queries, DTOs, stock mutation, stock math, and external-change tracking.
+- `src/Costing`: fixed-decimal weighted-average policy, owner locks, audited cost changes, and valuation services.
 - `src/Suppliers`: supplier and catalog-relationship validation and business services.
 - `src/REST`: authenticated `stockino/v1` management endpoints.
 - `admin/src`: scoped React, strict TypeScript, TanStack Query, Tailwind, and responsive RTL UI.
@@ -76,7 +80,7 @@ Supplier lists and linked-product lists use separate prepared `COUNT` and bounde
 
 ## Purchase Orders and Receiving
 
-Phase 3 stores purchase orders, immutable supplier/product snapshots, receipt headers, and receipt lines in four dedicated Stockino tables. Drafts are structurally editable; marking ordered locks supplier, line identity, and ordered quantities. The explicit state machine is `draft → ordered → partially_received → received`, with cancellation allowed from draft, ordered, or partially received. Cancellation never reverses inventory already received. Phase 3 intentionally contains no purchase prices, costing, tax, totals, or inventory valuation.
+Phase 3 stores purchase orders, immutable supplier/product snapshots, receipt headers, and receipt lines in four dedicated Stockino tables. Drafts are structurally editable; marking ordered locks supplier, line identity, ordered quantities, and optional ordered/default unit cost. The explicit state machine is `draft → ordered → partially_received → received`, with cancellation allowed from draft, ordered, or partially received. Cancellation never reverses inventory already received. Phase 4 adds actual receipt unit cost but intentionally excludes tax, shipping, discounts, accounting totals, COGS, profit, and sales-order costing.
 
 Ordered and received quantities use fixed six-decimal string arithmetic compatible with `DECIMAL(20,6)`; PHP floats are not authoritative for ordered/received/remaining calculations. Before receiving, Stockino verifies that WooCommerce's effective stock amount exactly represents the requested business quantity. A variation remains the PO/receipt source identity, while `get_stock_managed_by_id()` selects the actual WooCommerce stock owner. Parent-managed variation receipts therefore update the parent but retain both IDs in receipt and movement metadata.
 
@@ -87,6 +91,18 @@ Inventory increments use WooCommerce's relative `wc_update_product_stock(..., 'i
 Receipt history exposes `confirmed_units`, `attention_units`, and `failed_units`. The backward-compatible `received_units` label contains confirmed completed lines only; failed or halted lines are never summed as received. Safety accounting separately includes completed and `requires_attention` quantities because an attention quantity may already have reached WooCommerce. Administrators must compare the receipt line's before/observed-after/error details with WooCommerce and the physical delivery before manual reconciliation. Successful earlier lines in a multi-line request remain recorded, and Stockino never attempts a potentially unsafe automatic stock reversal.
 
 Purchase-order lists use a prepared count plus one aggregate, bounded list query. Receipt history is paginated. Development fixtures are restricted to `local` and `development` and create receipt examples through the real receiving service.
+
+## Inventory costing and valuation
+
+Database version `4.0.0` adds `{prefix}stockino_inventory_costs`, with exactly one current row per WooCommerce stock owner, and `{prefix}stockino_inventory_cost_movements`, an immutable audit trail. PO lines may hold nullable `ordered_unit_cost`; receipt lines persist the independently supplied `actual_unit_cost`, currency snapshot, cost-movement link, and costing status. Unknown legacy costs remain null rather than being migrated to zero. Product IDs, names, SKU, source variation, PO, receipt, actor, quantities, averages, inventory values, reason, currency, and time are snapshotted in movements so history remains readable after product deletion.
+
+Stockino uses moving weighted average cost. When positive pre-receipt stock has an established average, `new average = ((pre quantity × previous average) + (received quantity × actual unit cost)) ÷ post quantity`. The inputs are scaled six-decimal strings and the integer products retain their full intermediate precision; the final average and inventory value use round-half-up to six decimals. PHP floats are never authoritative for unit cost, the weighted calculation, or monetary value. A first receipt, uncosted owner, zero pre-stock, or negative pre-stock resets the current average to that receipt's actual cost. Stock at or below zero has current value zero while retaining the latest sensible average for future receipts. Sales and manual decreases do not change average cost. Non-purchase increases retain an existing average; positive stock without an average is explicitly `uncosted` and is excluded—not counted as zero—from known-value aggregates.
+
+Cost identity follows `WC_Product::get_stock_managed_by_id()`. A self-managed variation owns an independent cost row; a parent-managed variation updates the single parent cost row while its source variation remains in history. The valuation query selects actual managed-stock owners, so shared parent inventory is never duplicated. Listing, search, stock/cost filters, sorting, and history use prepared, bounded server pagination. On 2026-08-11, the local page-size-20 check returned 20 of 2,390 owners in 12.49 ms using two catalog/cost SQL queries. This is a local observation, not a production latency guarantee.
+
+Receiving first holds the existing PO operation lock and then acquires all affected owner-cost MySQL advisory locks in sorted owner-ID order. Releases run in `finally`; different POs receiving the same owner therefore serialize without weakening the PO boundary. The current cost is re-read while that owner lock is held. Cost movement plus current-state update use one InnoDB transaction and a database `UNIQUE(receipt_item_id)` constraint. This transaction does not claim to roll back WooCommerce stock. If stock is unchanged, cost is not applied. If stock is uncertain, costing also becomes `requires_attention`. If stock changed but cost persistence fails, Stockino preserves stock/cost diagnostics, marks the line and receipt `requires_attention`, blocks blind replay, and never attempts an automatic stock reversal.
+
+Existing stock is never assigned an invented cost. `Set initial average cost` requires an explicit administrator value and reason, holds the owner lock, records an `initial_cost` movement, and does not touch stock. It cannot overwrite an established average. Later manual changes use the distinct `cost_correction` workflow, preserving old/new averages, stock and value snapshots, actor, reason, and immutable history. Phase 4 supports only the WooCommerce store currency and performs no currency conversion. Historical rows retain their snapshots; a receipt is blocked before stock mutation if its currency would be mixed with an established cost in another currency.
 
 On 2026-08-10, the local fixture check returned 20 of 20 suppliers in 1.03 ms and 20 of 30 relationships for `SUP-001` in 8.66 ms. These are local development observations, not production latency guarantees.
 
@@ -117,6 +133,12 @@ All routes require an authenticated user with `manage_woocommerce` and a WordPre
 - `PUT|PATCH|DELETE /stockino/v1/purchase-orders/{id}/items/{item_id}`
 - `GET|POST /stockino/v1/purchase-orders/{id}/receipts`
 - `GET /stockino/v1/purchase-receipts/{id}`
+- `GET /stockino/v1/valuation`
+- `GET /stockino/v1/valuation/stats`
+- `GET /stockino/v1/valuation/{stock_owner_id}`
+- `GET /stockino/v1/valuation/{stock_owner_id}/history`
+- `POST /stockino/v1/valuation/{stock_owner_id}/initial-cost`
+- `POST /stockino/v1/valuation/{stock_owner_id}/corrections`
 
 List/history endpoints are server-paginated. CSV export includes only product/variation identity and inventory fields and prefixes formula-like text values to prevent spreadsheet injection.
 
@@ -127,6 +149,9 @@ npm run typecheck
 npm run build
 npm run qa:browser
 npm run qa:suppliers
+npm run qa:purchasing
+npm run qa:valuation
+npm run qa:coexistence
 docker compose run --rm --entrypoint php composer vendor/bin/phpunit
 docker compose run --rm --entrypoint php composer vendor/bin/phpcs --standard=phpcs.xml.dist
 ```
@@ -140,10 +165,12 @@ Browser QA uses local Chrome by default. Set `STOCKINO_BROWSER_PATH` and `STOCKI
 - Total-unit stats intentionally include signed stock quantities when backorders allow negative inventory.
 - Category options are capped at 200 in Phase 1; catalog search supports names, exact SKU, and practical numeric IDs.
 - An `uncertain` receiving outcome deliberately requires manual reconciliation; Stockino cannot prove whether a third-party WooCommerce save/hook exception happened before or after persistence.
+- Costing supports only the current WooCommerce store currency; there is no conversion or multi-currency weighted average.
+- Phase 4 is operational inventory valuation, not accounting: it intentionally provides no FIFO/LIFO layers, tax/shipping/discount allocation, COGS, profit reporting, or sales-order costing.
 
 ## Manual QA
 
-Validate activation with and without WooCommerce; admin asset scoping; inventory pagination and filters; stock adjustments and exactly-one movement behavior; supplier create/edit/archive/reactivate; supplier pagination/search; product and variation relationships; purchase-order draft/order/cancel transitions; partial and complete receiving; idempotent retry; parent-managed variation receiving; attention-state visibility; inventory non-interference; desktop/390px RTL layout; clean browser console; and activation alongside Orderino. The automated smoke scripts cover these server-side paths.
+Validate activation with and without WooCommerce; admin asset scoping; inventory pagination and filters; stock adjustments and exactly-one movement behavior; supplier create/edit/archive/reactivate; supplier pagination/search; product and variation relationships; purchase-order default cost; partial and complete receiving with actual cost; idempotent retry; weighted-average history; parent- and self-managed variations; initial-cost and correction workflows; uncosted aggregate warning; attention-state visibility; inventory non-interference; desktop/390px RTL layout; clean browser console; and activation alongside Orderino. The automated smoke scripts cover these server-side paths.
 
 ## Roadmap status
 
@@ -151,9 +178,9 @@ Validate activation with and without WooCommerce; admin asset scoping; inventory
 - Phase 1: inventory dashboard and stock ledger — complete and hardened
 - Phase 2: supplier management — complete
 - Phase 3: purchase orders and receiving — complete
-- Phase 4: costs and inventory valuation — not started
-- Phase 4–6: costing/valuation, reorder intelligence, and commercial release — not implemented
+- Phase 4: costs and inventory valuation — complete
+- Phase 5–6: reorder intelligence and commercial release — not implemented
 
 ## Data retention
 
-Stock movements are operational audit records and are retained on uninstall by default. Stockino never removes WooCommerce products, orders, or stock data.
+Stock and cost movements are operational audit records and are retained on uninstall by default. Stockino never removes WooCommerce products, orders, or stock data.

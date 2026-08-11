@@ -15,6 +15,7 @@ export interface PurchaseOrderItem {
   ordered_quantity: string;
   received_quantity: string;
   remaining_quantity: string;
+  ordered_unit_cost: string | null;
   notes: string | null;
 }
 
@@ -38,6 +39,7 @@ export interface PurchaseOrder {
   ordered_at: string | null;
   completed_at: string | null;
   cancelled_at: string | null;
+  currency_snapshot: string;
 }
 
 export interface PurchaseOrderDetail extends PurchaseOrder { items: PurchaseOrderItem[] }
@@ -53,6 +55,11 @@ export interface ReceiptItem {
   quantity_before: string | null;
   quantity_after: string | null;
   movement_id: number | null;
+  actual_unit_cost: string | null;
+  currency_snapshot: string | null;
+  cost_movement_id: number | null;
+  costing_status: 'pending' | 'processing' | 'completed' | 'not_applied' | 'requires_attention';
+  cost_error: string | null;
   status: 'pending' | 'completed' | 'requires_attention' | 'failed';
   error_code: string | null;
   error_message: string | null;

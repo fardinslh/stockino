@@ -10,6 +10,7 @@
     "qa:browser": "node tests/Browser/admin-qa.mjs",
     "qa:suppliers": "node tests/Browser/supplier-qa.mjs",
     "qa:purchasing": "node tests/Browser/purchasing-qa.mjs",
+    "qa:valuation": "node tests/Browser/valuation-qa.mjs",
     "qa:coexistence": "node tests/Browser/coexistence-qa.mjs"
   },
   "dependencies": {
