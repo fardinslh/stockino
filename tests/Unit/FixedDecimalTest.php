@@ -39,10 +39,23 @@ final class FixedDecimalTest extends TestCase {
 	}
 
 	public function test_strict_cost_validation_distinguishes_zero_from_unknown(): void {
+
 		self::assertSame( '0.000000', FixedDecimal::normalize_cost( '0' ) );
 		self::assertNull( FixedDecimal::normalize_cost( '' ) );
 		self::assertNull( FixedDecimal::normalize_cost( '1.0000001' ) );
 		self::assertNull( FixedDecimal::normalize_cost( -1 ) );
 		self::assertNull( FixedDecimal::normalize_cost( 0.1 ) );
+	}
+
+	public function test_signed_addition_and_subtraction_are_exact(): void {
+
+			self::assertSame( '-1.750000', FixedDecimal::add( '-3.250000', '1.500000' ) );
+		self::assertSame( '4.750000', FixedDecimal::subtract( '1.500000', '-3.250000' ) );
+	}
+
+	public function test_multiple_rounding_never_uses_floats(): void {
+
+		self::assertSame( '12.000000', FixedDecimal::ceil_to_multiple( '10.000001', '3.000000' ) );
+		self::assertSame( '1.500000', FixedDecimal::ceil_to_multiple( '1.200001', '0.500000' ) );
 	}
 }

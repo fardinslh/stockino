@@ -227,12 +227,25 @@ $wpdb->insert(
 $stats_with_orphan    = $request( 'GET', '/stockino/v1/suppliers/stats' )->get_data();
 $detail_with_orphan   = $request( 'GET', "/stockino/v1/suppliers/{$supplier_id}" )->get_data();
 $products_with_orphan = $request( 'GET', "/stockino/v1/suppliers/{$supplier_id}/products" )->get_data();
-$without_products     = $request( 'GET', '/stockino/v1/suppliers', array( 'has_products' => 'false', 'search' => $code ) )->get_data();
+$without_products     = $request(
+	'GET',
+	'/stockino/v1/suppliers',
+	array(
+		'has_products' => 'false',
+		'search'       => $code,
+	)
+)->get_data();
 $assert( $stats_before === $stats_with_orphan, 'Supplier stats exclude orphan relationships.' );
 $assert( $detail_before['linked_product_count'] === $detail_with_orphan['linked_product_count'], 'Supplier detail counts exclude orphan relationships.' );
 $assert( $products_before['pagination']['total_items'] === $products_with_orphan['pagination']['total_items'], 'Supplier product pagination totals exclude orphan relationships.' );
 $assert( 1 === $without_products['pagination']['total_items'], 'The has-products filter ignores orphan relationships.' );
-$wpdb->delete( $relation_table, array( 'supplier_id' => $supplier_id, 'product_id' => $orphan_id ) );
+$wpdb->delete(
+	$relation_table,
+	array(
+		'supplier_id' => $supplier_id,
+		'product_id'  => $orphan_id,
+	)
+);
 
 $temporary = new WC_Product_Simple();
 $temporary->set_name( 'Stockino deletion QA' );
@@ -245,9 +258,19 @@ $assert( 201 === $request( 'POST', "/stockino/v1/suppliers/{$supplier_id}/produc
 wp_trash_post( $temporary_id );
 $assert( 1 === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE supplier_id = %d AND product_id = %d', $relation_table, $supplier_id, $temporary_id ) ), 'Trashing a product preserves its supplier relationship.' );
 wp_untrash_post( $temporary_id );
-wp_update_post( array( 'ID' => $temporary_id, 'post_status' => 'draft' ) );
+wp_update_post(
+	array(
+		'ID'          => $temporary_id,
+		'post_status' => 'draft',
+	)
+);
 $assert( 1 === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE supplier_id = %d AND product_id = %d', $relation_table, $supplier_id, $temporary_id ) ), 'Drafting a product preserves its supplier relationship.' );
-wp_update_post( array( 'ID' => $temporary_id, 'post_status' => 'private' ) );
+wp_update_post(
+	array(
+		'ID'          => $temporary_id,
+		'post_status' => 'private',
+	)
+);
 wp_delete_post( $temporary_id, true );
 $assert( 0 === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE product_id = %d', $relation_table, $temporary_id ) ), 'Permanently deleting a simple product removes only its supplier relationships.' );
 
@@ -275,8 +298,7 @@ $assert( ! in_array( $parent_id, $remaining_ids, true ) && ! in_array( $variatio
 $movement_rows = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', $movement_table ) );
 update_option( 'stockino_db_version', '1.0.0' );
 Stockino\Database\Installer::activate();
-$assert( '4.0.0' === get_option( 'stockino_db_version' ) && $movement_rows === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', $movement_table ) ), 'The cumulative migration preserves movement data and advances to the Phase 4 schema version.' );
-
+$assert( '5.0.0' === get_option( 'stockino_db_version' ) && $movement_rows === (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i', $movement_table ) ), 'The cumulative migration preserves movement data and advances to the Phase 5 schema version.' );
 $wpdb->delete( $relation_table, array( 'supplier_id' => $supplier_id ) );
 $wpdb->delete( $supplier_table, array( 'id' => $supplier_id ) );
 WP_CLI::success( 'Stockino supplier smoke suite passed.' );

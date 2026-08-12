@@ -12,6 +12,7 @@ import type {
 import type { RelationshipInput, SupplierDetail, SupplierInput, SupplierListItem, SupplierPageData, SupplierParams, SupplierProduct, SupplierStats } from '@/types/suppliers';
 import type { PurchaseOrder, PurchaseOrderDetail, PurchaseOrderInput, PurchaseOrderItem, PurchaseOrderParams, PurchaseOrderStats, PurchasePage, PurchaseReceipt } from '@/types/purchasing';
 import type { CostHistoryPage, ValuationPageData, ValuationParams, ValuationRow, ValuationStats } from '@/types/valuation';
+import type { IncomingPurchaseOrder, ReorderCreationResult, ReorderFilters, ReorderPageData, ReorderParams, ReorderSettings, ReorderStats } from '@/types/reorder';
 
 interface ApiErrorBody { code?: string; message?: string }
 
@@ -106,4 +107,14 @@ export const valuationApi = {
   history: (id: number, page: number): Promise<CostHistoryPage> => request(`valuation/${id}/history?${queryString({ page, per_page: 20 })}`),
   setInitial: (id: number, average_unit_cost: string, reason: string): Promise<unknown> => request(`valuation/${id}/initial-cost`, { method: 'POST', body: JSON.stringify({ average_unit_cost, reason }) }),
   correct: (id: number, average_unit_cost: string, reason: string): Promise<unknown> => request(`valuation/${id}/corrections`, { method: 'POST', body: JSON.stringify({ average_unit_cost, reason }) }),
+};
+
+export const reorderApi = {
+  list: (params: ReorderParams): Promise<ReorderPageData> => request(`reorder?${queryString(params)}`),
+  stats: (): Promise<ReorderStats> => request('reorder/stats'),
+  filters: (): Promise<ReorderFilters> => request('reorder/filters'),
+  incoming: (id: number, page: number): Promise<{ items: IncomingPurchaseOrder[]; pagination: { current_page: number; per_page: number; total_items: number; total_pages: number } }> => request(`reorder/${id}/incoming?${queryString({ page, per_page: 20 })}`),
+  settings: (id: number): Promise<ReorderSettings> => request(`reorder/${id}/settings`),
+  updateSettings: (id: number, payload: Pick<ReorderSettings, 'custom_reorder_point' | 'custom_target_stock' | 'preferred_supplier_id' | 'preferred_product_id'>): Promise<ReorderSettings> => request(`reorder/${id}/settings`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  createPurchaseOrders: (stock_owner_ids: number[]): Promise<ReorderCreationResult> => request('reorder/create-purchase-orders', { method: 'POST', body: JSON.stringify({ stock_owner_ids }) }),
 };

@@ -1,8 +1,8 @@
 <?php
 
-namespace Stockino\Costing;
+namespace Stockino\Reorder;
 
-final class MysqlCostLock implements CostLock {
+final class MysqlReorderLock implements ReorderLock {
 	public function __construct( private readonly int $timeout = 3 ) {}
 
 	public function acquire_many( array $stock_owner_ids ): bool {
@@ -39,6 +39,7 @@ final class MysqlCostLock implements CostLock {
 
 	private function name( int $stock_owner_id ): string {
 		global $wpdb;
+		// This namespace is deliberately shared with MysqlCostLock so receiving/costing and reorder generation serialize per owner.
 		return substr( 'stockino:' . md5( DB_NAME . ':' . $wpdb->prefix ) . ':owner:' . $stock_owner_id, 0, 64 );
 	}
 }

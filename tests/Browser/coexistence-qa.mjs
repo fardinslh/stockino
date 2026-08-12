@@ -17,19 +17,19 @@ try {
   await page.locator('#user_pass').fill('admin');
   await Promise.all([page.waitForURL(/wp-admin/), page.locator('#wp-submit').click()]);
 
-  await page.goto(`${baseUrl}/wp-admin/admin.php?page=orderino`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/wp-admin/admin.php?page=orderino`, { waitUntil: 'domcontentloaded' });
   await page.locator('#orderino-admin-root').waitFor();
   const orderinoAssets = await page.locator('script[src],link[href]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('src') ?? node.getAttribute('href') ?? ''));
   if (!orderinoAssets.some((url) => url.includes('/plugins/orderino/'))) failures.push('Orderino page did not load its scoped assets');
   if (orderinoAssets.some((url) => url.includes('/plugins/stockino/'))) failures.push('Stockino assets leaked onto the Orderino page');
 
-  await page.goto(`${baseUrl}/wp-admin/admin.php?page=stockino`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/wp-admin/admin.php?page=stockino`, { waitUntil: 'domcontentloaded' });
   await page.locator('#stockino-admin-root h1').waitFor();
   const inventoryAssets = await page.locator('script[src],link[href]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('src') ?? node.getAttribute('href') ?? ''));
   if (!inventoryAssets.some((url) => url.includes('/plugins/stockino/'))) failures.push('Stockino inventory page did not load its scoped assets');
   if (inventoryAssets.some((url) => url.includes('/plugins/orderino/'))) failures.push('Orderino assets leaked onto the Stockino page');
 
-  await page.goto(`${baseUrl}/wp-admin/admin.php?page=stockino-suppliers`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/wp-admin/admin.php?page=stockino-suppliers`, { waitUntil: 'domcontentloaded' });
   await page.locator('.stockino-suppliers-app h1').waitFor();
   const rest = await page.request.get(`${baseUrl}/?rest_route=/`);
   const namespaces = (await rest.json()).namespaces;

@@ -19,7 +19,10 @@ export const PurchaseOrdersPage: React.FC = () => {
   const [params, setParams] = useState<PurchaseOrderParams>(initialParams);
   const [search, setSearch] = useState('');
   const debounced = useDebouncedValue(search);
-  const [detailId, setDetailId] = useState<number | null>(null);
+  const [detailId, setDetailId] = useState<number | null>(() => {
+    const requested = Number(new URLSearchParams(window.location.search).get('po_id'));
+    return Number.isSafeInteger(requested) && requested > 0 ? requested : null;
+  });
   const [createOpen, setCreateOpen] = useState(false);
   const [lineOpen, setLineOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);

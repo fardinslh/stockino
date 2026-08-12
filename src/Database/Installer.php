@@ -29,7 +29,9 @@ final class Installer {
 		if ( version_compare( $current, '4.0.0', '<' ) ) {
 			self::create_costing_tables();
 		}
-
+		if ( version_compare( $current, '5.0.0', '<' ) ) {
+			self::create_reorder_tables();
+		}
 		update_option( self::OPTION, STOCKINO_DB_VERSION, false );
 	}
 
@@ -210,6 +212,7 @@ final class Installer {
 	}
 
 	private static function create_costing_tables(): void {
+
 		global $wpdb;
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
@@ -295,5 +298,39 @@ final class Installer {
 				''
 			)
 		);
+	}
+
+	private static function create_reorder_tables(): void {
+		global $wpdb;
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+		$order_items = $wpdb->prefix . 'stockino_purchase_order_items';
+		$settings    = $wpdb->prefix . 'stockino_reorder_settings';
+		$charset     = $wpdb->get_charset_collate();
+		$sql         = "CREATE TABLE {$order_items} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			reorder_stock_owner_id bigint(20) unsigned NULL,
+			PRIMARY KEY  (id),
+			KEY reorder_stock_owner_id (reorder_stock_owner_id)
+		) {$charset};
+		CREATE TABLE {$settings} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			stock_owner_id bigint(20) unsigned NOT NULL,
+			custom_reorder_point decimal(20,6) NULL,
+			custom_target_stock decimal(20,6) NULL,
+			preferred_supplier_id bigint(20) unsigned NULL,
+			preferred_product_id bigint(20) unsigned NULL,
+			created_by bigint(20) unsigned NULL,
+			updated_by bigint(20) unsigned NULL,
+			created_at datetime NOT NULL,
+			updated_at datetime NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY stock_owner_id (stock_owner_id),
+			KEY preferred_supplier_id (preferred_supplier_id),
+			KEY preferred_product_id (preferred_product_id),
+			KEY updated_at (updated_at)
+		) {$charset};";
+
+		dbDelta( $sql );
 	}
 }

@@ -11,7 +11,8 @@
     "qa:suppliers": "node tests/Browser/supplier-qa.mjs",
     "qa:purchasing": "node tests/Browser/purchasing-qa.mjs",
     "qa:valuation": "node tests/Browser/valuation-qa.mjs",
-    "qa:coexistence": "node tests/Browser/coexistence-qa.mjs"
+    "qa:coexistence": "node tests/Browser/coexistence-qa.mjs",
+    "qa:reorder": "node tests/Browser/reorder-qa.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.66.8",

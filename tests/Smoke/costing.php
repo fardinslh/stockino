@@ -143,6 +143,7 @@ $receive   = static function ( array $order, array $line, string $quantity, mixe
 list( $legacy_order, $legacy_line ) = $create_po( $legacy->get_id(), '1', null );
 $legacy_before                      = (float) wc_get_product( $legacy->get_id() )->get_stock_quantity();
 $unknown                            = $receive( $legacy_order, $legacy_line, '1', null );
+// phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- The calculated baseline reads naturally on the left in this integration assertion.
 $assert( 400 === $unknown->get_status() && $legacy_before === (float) wc_get_product( $legacy->get_id() )->get_stock_quantity(), 'Unknown legacy cost is rejected before stock changes.' );
 
 list( $first_order, $first_line ) = $create_po( $main->get_id(), '10', '10.000000' );
@@ -169,6 +170,7 @@ $initial = $request(
 		'reason'            => 'Opening inventory count',
 	)
 );
+// phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- The calculated baseline reads naturally on the left in this integration assertion.
 $assert( 201 === $initial->get_status() && $legacy_before === (float) wc_get_product( $legacy->get_id() )->get_stock_quantity(), 'Initial cost requires explicit action and never mutates stock.' );
 $assert(
 	409 === $request(
@@ -222,13 +224,17 @@ $assert( in_array( $parent_id, $valuation_ids, true ) && in_array( $self_id, $va
 
 list( $failure_order, $failure_line ) = $create_po( $failure->get_id(), '1', '7' );
 $trigger                              = $wpdb->prefix . 'stockino_test_cost_failure';
+// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Test-only identifiers are constructed from the trusted WordPress prefix.
 $wpdb->query( "DROP TRIGGER IF EXISTS {$trigger}" );
+// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Test-only identifiers are constructed from the trusted WordPress prefix.
 $wpdb->query( $wpdb->prepare( "CREATE TRIGGER {$trigger} BEFORE INSERT ON {$cost_moves} FOR EACH ROW BEGIN IF NEW.stock_owner_id = %d THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Injected cost failure'; END IF; END", $failure->get_id() ) );
 $failure_before = (float) wc_get_product( $failure->get_id() )->get_stock_quantity();
 $failed_cost    = $receive( $failure_order, $failure_line, '1', '7' );
+// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Test-only identifier is constructed from the trusted WordPress prefix.
 $wpdb->query( "DROP TRIGGER IF EXISTS {$trigger}" );
 $failed_payload = $failed_cost->get_data();
 $failed_receipt = $failed_payload['data']['receipt'] ?? null;
+// phpcs:ignore WordPress.PHP.YodaConditions.NotYoda -- The calculated expected quantity reads naturally on the left in this integration assertion.
 $assert( 500 === $failed_cost->get_status() && $failure_before + 1 === (float) wc_get_product( $failure->get_id() )->get_stock_quantity() && 'requires_attention' === $failed_receipt['items'][0]['costing_status'], 'Post-stock cost persistence failure converges to requires_attention without reversing stock.' );
 $assert( null === $wpdb->get_var( $wpdb->prepare( 'SELECT average_unit_cost FROM %i WHERE stock_owner_id = %d', $costs_table, $failure->get_id() ) ), 'Failed cost persistence does not partially advance weighted-average state.' );
 

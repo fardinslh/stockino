@@ -7,6 +7,8 @@ use Stockino\Database\Installer;
 use Stockino\Database\InventoryCostRepository;
 use Stockino\Database\PurchaseOrderRepository;
 use Stockino\Database\PurchaseReceiptRepository;
+use Stockino\Database\ReorderRepository;
+use Stockino\Database\ReorderSettingsRepository;
 use Stockino\Database\StockMovementRepository;
 use Stockino\Database\SupplierProductRepository;
 use Stockino\Database\SupplierRepository;
@@ -22,11 +24,15 @@ use Stockino\Inventory\ProductDtoFactory;
 use Stockino\Inventory\StockAdjustmentService;
 use Stockino\REST\RestApi;
 use Stockino\REST\PurchaseOrderRestApi;
+use Stockino\REST\ReorderRestApi;
 use Stockino\REST\SupplierRestApi;
 use Stockino\REST\ValuationRestApi;
 use Stockino\Purchasing\MysqlReceiveLock;
 use Stockino\Purchasing\PurchaseOrderService;
 use Stockino\Purchasing\PurchaseReceivingService;
+use Stockino\Reorder\MysqlReorderLock;
+use Stockino\Reorder\ReorderCalculator;
+use Stockino\Reorder\ReorderService;
 use Stockino\Suppliers\SupplierProductCleanup;
 use Stockino\Suppliers\SupplierProductService;
 use Stockino\Suppliers\SupplierService;
@@ -79,7 +85,15 @@ final class Plugin {
 			$receiving_service
 		) )->register();
 		( new ValuationRestApi( new ValuationService( new ValuationRepository(), $costs, $cost_service ) ) )->register();
-
+		( new ReorderRestApi(
+			new ReorderService(
+				new ReorderRepository(),
+				new ReorderSettingsRepository(),
+				new ReorderCalculator(),
+				$order_service,
+				new MysqlReorderLock()
+			)
+		) )->register();
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			( new \Stockino\Support\FixtureCommand() )->register();
 			( new \Stockino\Support\SupplierFixtureCommand() )->register();

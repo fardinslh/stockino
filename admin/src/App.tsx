@@ -4,7 +4,8 @@ const InventoryPage = lazy(() => import('./features/inventory/InventoryPage'));
 const SuppliersPage = lazy(() => import('./features/suppliers/SuppliersPage'));
 const PurchaseOrdersPage = lazy(() => import('./features/purchasing/PurchaseOrdersPage'));
 const ValuationPage = lazy(() => import('./features/valuation/ValuationPage'));
+const ReorderPage = lazy(() => import('./features/reorder/ReorderPage'));
 
-export const App: React.FC = () => <Suspense fallback={<div className="stockino-skeleton" aria-label="در حال بارگذاری" />}>{window.stockinoSettings.page === 'suppliers' ? <SuppliersPage /> : window.stockinoSettings.page === 'purchase-orders' ? <PurchaseOrdersPage /> : window.stockinoSettings.page === 'valuation' ? <ValuationPage /> : <InventoryPage />}</Suspense>;
+export const App: React.FC = () => <Suspense fallback={<div className="stockino-skeleton" aria-label="در حال بارگذاری" />}>{window.stockinoSettings.page === 'suppliers' ? <SuppliersPage /> : window.stockinoSettings.page === 'purchase-orders' ? <PurchaseOrdersPage /> : window.stockinoSettings.page === 'valuation' ? <ValuationPage /> : window.stockinoSettings.page === 'reorder' ? <ReorderPage /> : <InventoryPage />}</Suspense>;
 
 export default App;

@@ -108,8 +108,37 @@ final class PurchaseOrderService {
 		return $this->with_operation_lock( $order_id, fn() => $this->add_item_under_lock( $order_id, $input ) );
 	}
 
+	/** @param array<string,mixed> $input @param array<int,array<string,mixed>> $items @return array<string,mixed>|WP_Error */
+	public function create_reorder_draft( array $input, array $items ) {
+		if ( array() === $items || count( $items ) > 50 ) {
+			return $this->error( 'stockino_invalid_reorder_batch', 'A reorder draft requires 1 to 50 lines.', 400 );
+		}
+		$order = $this->create( $input );
+		if ( is_wp_error( $order ) ) {
+			return $order;
+		}
+		$order_id = (int) $order['id'];
+		$result   = $this->with_operation_lock(
+			$order_id,
+			function () use ( $order_id, $items ) {
+				foreach ( $items as $item ) {
+					$owner_id = absint( $item['reorder_stock_owner_id'] ?? 0 );
+					$created  = $this->add_item_under_lock( $order_id, $item, $owner_id );
+					if ( is_wp_error( $created ) ) {
+						return $created;
+					}
+				}
+				return $this->get( $order_id );
+			}
+		);
+		if ( is_wp_error( $result ) ) {
+			$this->orders->delete_draft( $order_id );
+		}
+		return $result;
+	}
+
 	/** @param array<string,mixed> $input @return array<string,mixed>|WP_Error */
-	private function add_item_under_lock( int $order_id, array $input ) {
+	private function add_item_under_lock( int $order_id, array $input, int $reorder_stock_owner_id = 0 ) {
 		$order = $this->orders->find( $order_id );
 		if ( ! $order ) {
 			return $this->not_found();
@@ -136,17 +165,21 @@ final class PurchaseOrderService {
 			return $unit_cost;
 		}
 		$is_variation = $product->is_type( 'variation' );
-		$data         = array(
-			'purchase_order_id'     => $order_id,
-			'product_id'            => $product_id,
-			'product_name_snapshot' => $product->get_name(),
-			'sku_snapshot'          => $product->get_sku() ? $product->get_sku() : null,
-			'product_type_snapshot' => $product->get_type(),
-			'variation_snapshot'    => $is_variation ? wp_strip_all_tags( wc_get_formatted_variation( $product, true, false, true ) ) : null,
-			'supplier_sku_snapshot' => $relation['supplier_sku'],
-			'ordered_quantity'      => $quantity,
-			'ordered_unit_cost'     => $unit_cost,
-			'notes'                 => $this->notes( $input['notes'] ?? '' ),
+		if ( $reorder_stock_owner_id > 0 && $product->get_stock_managed_by_id() !== $reorder_stock_owner_id ) {
+			return $this->error( 'stockino_reorder_owner_mismatch', 'The reorder source no longer belongs to the selected stock owner.', 409 );
+		}
+		$data = array(
+			'purchase_order_id'      => $order_id,
+			'product_id'             => $product_id,
+			'product_name_snapshot'  => $product->get_name(),
+			'sku_snapshot'           => $product->get_sku() ? $product->get_sku() : null,
+			'product_type_snapshot'  => $product->get_type(),
+			'variation_snapshot'     => $is_variation ? wp_strip_all_tags( wc_get_formatted_variation( $product, true, false, true ) ) : null,
+			'supplier_sku_snapshot'  => $relation['supplier_sku'],
+			'ordered_quantity'       => $quantity,
+			'ordered_unit_cost'      => $unit_cost,
+			'notes'                  => $this->notes( $input['notes'] ?? '' ),
+			'reorder_stock_owner_id' => $reorder_stock_owner_id > 0 ? $reorder_stock_owner_id : null,
 		);
 		try {
 			$item_id = $this->orders->create_item( $data );

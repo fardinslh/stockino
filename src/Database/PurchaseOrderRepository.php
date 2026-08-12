@@ -199,6 +199,28 @@ final class PurchaseOrderRepository {
 		) > 0;
 	}
 
+	public function delete_draft( int $order_id ): bool {
+		global $wpdb;
+		$wpdb->query( 'START TRANSACTION' );
+		try {
+			$wpdb->delete( $this->items_table(), array( 'purchase_order_id' => $order_id ) );
+			$deleted = $wpdb->delete(
+				$this->orders_table(),
+				array(
+					'id'     => $order_id,
+					'status' => 'draft',
+				)
+			);
+			if ( 1 !== $deleted || false === $wpdb->query( 'COMMIT' ) ) {
+				throw new \RuntimeException( 'purchase_order_draft_delete_failed' );
+			}
+			return true;
+		} catch ( \Throwable $exception ) {
+			$wpdb->query( 'ROLLBACK' );
+			return false;
+		}
+	}
+
 	/** @return array<string,mixed>|null */
 	public function find_item( int $order_id, int $item_id ): ?array {
 		global $wpdb;
@@ -261,21 +283,22 @@ final class PurchaseOrderRepository {
 		$ordered  = PurchasingQuantity::normalize_nonnegative( $row['ordered_quantity'] ) ?? '0.000000';
 		$received = PurchasingQuantity::normalize_nonnegative( $row['received_quantity'] ) ?? '0.000000';
 		return array(
-			'id'                 => (int) $row['id'],
-			'purchase_order_id'  => (int) $row['purchase_order_id'],
-			'product_id'         => (int) $row['product_id'],
-			'product_name'       => (string) $row['product_name_snapshot'],
-			'sku'                => null !== $row['sku_snapshot'] ? (string) $row['sku_snapshot'] : null,
-			'product_type'       => (string) $row['product_type_snapshot'],
-			'variation'          => null !== $row['variation_snapshot'] ? (string) $row['variation_snapshot'] : null,
-			'supplier_sku'       => null !== $row['supplier_sku_snapshot'] ? (string) $row['supplier_sku_snapshot'] : null,
-			'ordered_quantity'   => $ordered,
-			'received_quantity'  => $received,
-			'remaining_quantity' => PurchasingQuantity::subtract( $ordered, $received ),
-			'ordered_unit_cost'  => null !== $row['ordered_unit_cost'] ? (string) $row['ordered_unit_cost'] : null,
-			'notes'              => null !== $row['notes'] ? (string) $row['notes'] : null,
-			'created_at'         => $this->iso_date( (string) $row['created_at'] ),
-			'updated_at'         => $this->iso_date( (string) $row['updated_at'] ),
+			'id'                     => (int) $row['id'],
+			'purchase_order_id'      => (int) $row['purchase_order_id'],
+			'product_id'             => (int) $row['product_id'],
+			'product_name'           => (string) $row['product_name_snapshot'],
+			'sku'                    => null !== $row['sku_snapshot'] ? (string) $row['sku_snapshot'] : null,
+			'product_type'           => (string) $row['product_type_snapshot'],
+			'variation'              => null !== $row['variation_snapshot'] ? (string) $row['variation_snapshot'] : null,
+			'supplier_sku'           => null !== $row['supplier_sku_snapshot'] ? (string) $row['supplier_sku_snapshot'] : null,
+			'ordered_quantity'       => $ordered,
+			'received_quantity'      => $received,
+			'remaining_quantity'     => PurchasingQuantity::subtract( $ordered, $received ),
+			'ordered_unit_cost'      => null !== $row['ordered_unit_cost'] ? (string) $row['ordered_unit_cost'] : null,
+			'reorder_stock_owner_id' => $row['reorder_stock_owner_id'] ? (int) $row['reorder_stock_owner_id'] : null,
+			'notes'                  => null !== $row['notes'] ? (string) $row['notes'] : null,
+			'created_at'             => $this->iso_date( (string) $row['created_at'] ),
+			'updated_at'             => $this->iso_date( (string) $row['updated_at'] ),
 		);
 	}
 

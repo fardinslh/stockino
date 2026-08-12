@@ -9,4 +9,3 @@ final class FoundationTest extends TestCase {
 		self::assertGreaterThanOrEqual( 80200, PHP_VERSION_ID );
 	}
 }
-

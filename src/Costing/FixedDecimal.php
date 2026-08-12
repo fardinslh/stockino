@@ -56,6 +56,58 @@ final class FixedDecimal {
 		return $left_negative ? -$comparison : $comparison;
 	}
 
+	public static function add( string $left, string $right ): string {
+		list( $left_negative, $left_digits )   = self::signed_digits( $left );
+		list( $right_negative, $right_digits ) = self::signed_digits( $right );
+		if ( $left_negative === $right_negative ) {
+			$result = self::from_scaled_digits( self::add_integer( $left_digits, $right_digits ) );
+			return $left_negative && '0.000000' !== $result ? '-' . $result : $result;
+		}
+		$comparison = self::compare_integer( $left_digits, $right_digits );
+		if ( 0 === $comparison ) {
+			return '0.000000';
+		}
+		$left_larger = $comparison > 0;
+		$result      = self::from_scaled_digits(
+			$left_larger ? self::subtract_integer( $left_digits, $right_digits ) : self::subtract_integer( $right_digits, $left_digits )
+		);
+		$negative    = $left_larger ? $left_negative : $right_negative;
+		return $negative ? '-' . $result : $result;
+	}
+
+	public static function subtract( string $left, string $right ): string {
+		$normalized = self::normalize_quantity( $right );
+		if ( null === $normalized ) {
+			throw new \InvalidArgumentException( 'Invalid fixed decimal.' );
+		}
+		$negative = str_starts_with( $normalized, '-' );
+		$inverse  = $negative ? ltrim( $normalized, '-' ) : ( '0.000000' === $normalized ? $normalized : '-' . $normalized );
+		return self::add( $left, $inverse );
+	}
+
+	public static function multiply_by_integer( string $value, int $factor ): string {
+		$normalized = self::normalize_cost( $value );
+		if ( null === $normalized || $factor < 0 ) {
+			throw new \InvalidArgumentException( 'Invalid non-negative fixed-decimal multiplication.' );
+		}
+		return self::from_scaled_digits( self::multiply_integer( self::unsigned_scaled_digits( $normalized ), (string) $factor ) );
+	}
+
+	public static function ceil_to_multiple( string $value, string $multiple ): string {
+			$normalized_value = self::normalize_cost( $value );
+		$normalized_multiple  = self::normalize_cost( $multiple );
+		if ( null === $normalized_value || null === $normalized_multiple || '0.000000' === $normalized_multiple ) {
+			throw new \InvalidArgumentException( 'Invalid fixed-decimal multiple.' );
+		}
+		$value_digits    = self::unsigned_scaled_digits( $normalized_value );
+		$multiple_digits = self::unsigned_scaled_digits( $normalized_multiple );
+		$quotient        = self::divide_integer( $value_digits, $multiple_digits );
+		if ( '0' !== $quotient['remainder'] ) {
+			$quotient['quotient'] = self::add_integer( $quotient['quotient'], '1' );
+		}
+		return self::from_scaled_digits( self::multiply_integer( $quotient['quotient'], $multiple_digits ) );
+	}
+
 	public static function weighted_average( string $quantity_before, string $received_quantity, ?string $average_before, string $unit_cost ): string {
 		$before   = self::normalize_quantity( $quantity_before );
 		$received = self::normalize_cost( $received_quantity );
@@ -152,6 +204,16 @@ final class FixedDecimal {
 	}
 
 	private static function divide_round_half_up( string $dividend, string $divisor ): string {
+		$division = self::divide_integer( $dividend, $divisor );
+		$quotient = $division['quotient'];
+		if ( self::compare_integer( self::multiply_integer( $division['remainder'], '2' ), $divisor ) >= 0 ) {
+			$quotient = self::add_integer( $quotient, '1' );
+		}
+		return $quotient;
+	}
+
+	/** @return array{quotient:string,remainder:string} */
+	private static function divide_integer( string $dividend, string $divisor ): array {
 		$dividend = self::trim_integer( $dividend );
 		$divisor  = self::trim_integer( $divisor );
 		if ( '0' === $divisor ) {
@@ -168,11 +230,10 @@ final class FixedDecimal {
 			}
 			$quotient .= (string) $digit;
 		}
-		$quotient = self::trim_integer( $quotient );
-		if ( self::compare_integer( self::multiply_integer( $remainder, '2' ), $divisor ) >= 0 ) {
-			$quotient = self::add_integer( $quotient, '1' );
-		}
-		return $quotient;
+		return array(
+			'quotient'  => self::trim_integer( $quotient ),
+			'remainder' => self::trim_integer( $remainder ),
+		);
 	}
 
 	private static function subtract_integer( string $left, string $right ): string {

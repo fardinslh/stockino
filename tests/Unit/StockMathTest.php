@@ -11,10 +11,46 @@ final class StockMathTest extends TestCase {
 	/** @return array<string,array{float,string,float,array<string,float>}> */
 	public static function calculations(): array {
 		return array(
-			'delta increase' => array( 12.0, 'delta', 8.0, array( 'before' => 12.0, 'delta' => 8.0, 'after' => 20.0 ) ),
-			'delta decrease' => array( 12.0, 'delta', -3.0, array( 'before' => 12.0, 'delta' => -3.0, 'after' => 9.0 ) ),
-			'set quantity'   => array( 12.0, 'set', 25.0, array( 'before' => 12.0, 'delta' => 13.0, 'after' => 25.0 ) ),
-			'negative delta' => array( 2.0, 'delta', -5.0, array( 'before' => 2.0, 'delta' => -5.0, 'after' => -3.0 ) ),
+			'delta increase' => array(
+				12.0,
+				'delta',
+				8.0,
+				array(
+					'before' => 12.0,
+					'delta'  => 8.0,
+					'after'  => 20.0,
+				),
+			),
+			'delta decrease' => array(
+				12.0,
+				'delta',
+				-3.0,
+				array(
+					'before' => 12.0,
+					'delta'  => -3.0,
+					'after'  => 9.0,
+				),
+			),
+			'set quantity'   => array(
+				12.0,
+				'set',
+				25.0,
+				array(
+					'before' => 12.0,
+					'delta'  => 13.0,
+					'after'  => 25.0,
+				),
+			),
+			'negative delta' => array(
+				2.0,
+				'delta',
+				-5.0,
+				array(
+					'before' => 2.0,
+					'delta'  => -5.0,
+					'after'  => -3.0,
+				),
+			),
 		);
 	}
 
@@ -30,7 +66,11 @@ final class StockMathTest extends TestCase {
 
 	public function test_reconstructs_atomic_delta_ledger_from_returned_stock(): void {
 		self::assertSame(
-			array( 'before' => 12.0, 'after' => 17.0, 'delta' => 5.0 ),
+			array(
+				'before' => 12.0,
+				'after'  => 17.0,
+				'delta'  => 5.0,
+			),
 			StockMath::movement_from_delta_result( 17.0, 5.0 )
 		);
 	}

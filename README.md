@@ -1,6 +1,6 @@
 # Stockino
 
-Stockino is an independent commercial WooCommerce operations plugin for purchasing and inventory. Version `0.1.0` contains the Phase 0 foundation, Phase 1 inventory dashboard and stock ledger, Phase 2 supplier management, Phase 3 purchase orders and receiving, and Phase 4 moving-average inventory costing and valuation. Reorder intelligence remains intentionally out of scope.
+Stockino is an independent commercial WooCommerce operations plugin for purchasing and inventory. Version `0.1.0` contains the Phase 0 foundation, Phase 1 inventory dashboard and stock ledger, Phase 2 supplier management, Phase 3 purchase orders and receiving, Phase 4 moving-average inventory costing and valuation, and Phase 5 deterministic reorder recommendations.
 
 ## Requirements
 
@@ -38,6 +38,17 @@ docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smo
 docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/purchasing.php
 docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/costing.php
 docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/valuation-performance.php
+docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/reorder.php
+docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/reorder-performance.php
+```
+
+The concurrency check uses four separate WP-CLI processes so MySQL advisory locks are exercised across real database connections:
+
+```bash
+docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/reorder-concurrency.php setup
+docker compose run --rm -d wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/reorder-concurrency.php worker-a
+docker compose run --rm -d wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/reorder-concurrency.php worker-b
+docker compose run --rm wpcli wp eval-file wp-content/plugins/stockino/tests/Smoke/reorder-concurrency.php verify
 ```
 
 Fixture generation is permitted only when `wp_get_environment_type()` is exactly `local` or `development`; staging, production, and unknown/default environments are rejected. `--start=<index>` supports extending an existing development catalog without reusing fixture SKUs.
@@ -49,6 +60,7 @@ Fixture generation is permitted only when `wp_get_environment_type()` is exactly
 - `src/Database`: versioned, activation/upgrade-only migrations using `stockino_db_version`, plus the movement repository.
 - `src/Inventory`: WooCommerce queries, DTOs, stock mutation, stock math, and external-change tracking.
 - `src/Costing`: fixed-decimal weighted-average policy, owner locks, audited cost changes, and valuation services.
+- `src/Reorder`: deterministic replenishment calculation, supplier resolution, stale-request validation, and owner-level generation locks.
 - `src/Suppliers`: supplier and catalog-relationship validation and business services.
 - `src/REST`: authenticated `stockino/v1` management endpoints.
 - `admin/src`: scoped React, strict TypeScript, TanStack Query, Tailwind, and responsive RTL UI.
@@ -106,6 +118,26 @@ Existing stock is never assigned an invented cost. `Set initial average cost` re
 
 On 2026-08-10, the local fixture check returned 20 of 20 suppliers in 1.03 ms and 20 of 30 relationships for `SUP-001` in 8.66 ms. These are local development observations, not production latency guarantees.
 
+## Deterministic reorder recommendations
+
+Database version `5.0.0` adds nullable/indexed reorder-owner provenance to purchase-order items and the dedicated `{prefix}stockino_reorder_settings` table with a unique stock-owner row, nullable custom point/target and preferred supplier/source fields, actor IDs, UTC timestamps, and targeted indexes.
+
+Stockino Phase 5 provides deterministic replenishment recommendations, not demand forecasting. Recommendations are derived live and are never persisted as transient forecasts. Exactly one recommendation exists for each active WooCommerce stock owner. A self-managed variation remains independent; parent-managed child variations share one parent recommendation, while their variation-specific supplier relationships remain available as possible purchase sources.
+
+The effective reorder point is an explicit Stockino owner override when present; otherwise it is WooCommerce's product/variation low-stock amount, including a self-managed variation's parent fallback, then WooCommerce's global low-stock amount. Unknown remains `threshold_unknown`, never zero. Stockino does not overwrite WooCommerce threshold metadata. The optional `stockino_reorder_settings` row stores fixed-decimal custom point/target values and a preferred supplier/source pair with creator/updater and UTC timestamps. Target must be at least the effective point.
+
+Confirmed incoming is the exact `ordered_quantity - safely accounted received quantity` remaining on `ordered` and `partially_received` Stockino POs. Safely accounted received is the greater of the PO line's confirmed received amount and completed/attention receipt accounting, preventing an uncertain unit from also being presented as confirmed incoming. Draft, received, and cancelled orders contribute zero. `inventory_position = current WooCommerce stock + confirmed incoming`. Receipt or costing rows in `requires_attention` are shown separately as ambiguous units and force `attention_required`; Stockino does not emit an automatic quantity until that operational ambiguity is reconciled.
+
+When `inventory_position <= reorder point`, the default target is `max(reorder point × 2, reorder point + 1)` and raw reorder is `max(0, target - inventory position)`. A custom target replaces only that default. Stockino then raises the result to MOQ when needed and rounds up to the supplier order multiple. Every operation uses six-decimal string/integer arithmetic; float modulo and rounding are not authoritative. Urgency is categorical: critical when current stock is non-positive, high when position is below the point, and normal when position equals the point. Confirmed incoming that moves position above the point produces `covered_by_incoming`, not an urgent action.
+
+Supplier selection is explicit preference first, then the active linked supplier with the lowest known effective lead time (relationship override before supplier default), with lower supplier ID as the tie-breaker. If all lead times are unknown, the lowest supplier ID is a clearly labeled deterministic fallback. An inactive or unlinked preference is never used. Stockino may fall back when exactly one source product identity remains; multiple competing child sources sharing a parent owner remain `supplier_selection_required` until the user selects a supplier/source pair. It never invents allocation among variations.
+
+Selected recommendations are capped at 50 and grouped into one editable draft PO per supplier through the existing purchase-order service. Cost is prefilled only from the latest confirmed actual receipt for the same supplier/source, then the latest non-cancelled confirmed PO default; otherwise it remains null. Retail price, sale price, and moving-average inventory cost are never used as supplier prices. Expected date uses the group's longest known effective lead time and remains editable. The response lists every created PO and every skipped/stale/unresolved owner, and generated lines retain their reorder-owner provenance.
+
+Creation acquires sorted MySQL advisory locks for all selected owners, re-reads current stock, incoming POs, relationships, and settings, recalculates every recommendation, and checks generated active drafts in one bounded batch query before inserting. This owner-lock namespace is shared with Phase 4 receiving/costing, so a receipt and reorder generation for the same owner serialize. Concurrent generation requests for the same shortage therefore create at most one active replenishment draft. Manual and third-party stock adjustment can still change operational facts immediately before or after this point-in-time decision; Stockino does not claim global serializability. PO status changes remain protected by the Phase 3 per-PO lock, and every later recommendation refresh derives from current WooCommerce and PO data.
+
+On 2026-08-13, the local WordPress/WooCommerce check used 2,404 active stock owners. The urgency-sorted `reorder_needed` page found 10 recommendations and returned all 10 within the page-size-20 bound in 465.13 ms using four SQL queries. Supplier candidates were loaded in one batch, with no per-owner supplier, PO, or WooCommerce hydration query. This is a local development observation, not a production latency guarantee.
+
 ## REST API
 
 All routes require an authenticated user with `manage_woocommerce` and a WordPress REST nonce in browser requests.
@@ -139,6 +171,13 @@ All routes require an authenticated user with `manage_woocommerce` and a WordPre
 - `GET /stockino/v1/valuation/{stock_owner_id}/history`
 - `POST /stockino/v1/valuation/{stock_owner_id}/initial-cost`
 - `POST /stockino/v1/valuation/{stock_owner_id}/corrections`
+- `GET /stockino/v1/reorder`
+- `GET /stockino/v1/reorder/stats`
+- `GET /stockino/v1/reorder/filters`
+- `GET /stockino/v1/reorder/{stock_owner_id}`
+- `GET /stockino/v1/reorder/{stock_owner_id}/incoming`
+- `GET|PATCH /stockino/v1/reorder/{stock_owner_id}/settings`
+- `POST /stockino/v1/reorder/create-purchase-orders`
 
 List/history endpoints are server-paginated. CSV export includes only product/variation identity and inventory fields and prefixes formula-like text values to prevent spreadsheet injection.
 
@@ -152,6 +191,7 @@ npm run qa:suppliers
 npm run qa:purchasing
 npm run qa:valuation
 npm run qa:coexistence
+npm run qa:reorder
 docker compose run --rm --entrypoint php composer vendor/bin/phpunit
 docker compose run --rm --entrypoint php composer vendor/bin/phpcs --standard=phpcs.xml.dist
 ```
@@ -167,10 +207,13 @@ Browser QA uses local Chrome by default. Set `STOCKINO_BROWSER_PATH` and `STOCKI
 - An `uncertain` receiving outcome deliberately requires manual reconciliation; Stockino cannot prove whether a third-party WooCommerce save/hook exception happened before or after persistence.
 - Costing supports only the current WooCommerce store currency; there is no conversion or multi-currency weighted average.
 - Phase 4 is operational inventory valuation, not accounting: it intentionally provides no FIFO/LIFO layers, tax/shipping/discount allocation, COGS, profit reporting, or sales-order costing.
+- Phase 5 uses threshold/target rules only. It has no demand or sales forecast, seasonality, safety-stock model, approval flow, automatic ordering, notification, marketplace integration, or external service.
+- Reorder generation is owner-serialized and request-time revalidated, but it is not globally serializable with every third-party WooCommerce stock mutation.
+- A shared parent stock owner with competing child sources requires an explicit supplier/source choice; Stockino does not split demand across variations.
 
 ## Manual QA
 
-Validate activation with and without WooCommerce; admin asset scoping; inventory pagination and filters; stock adjustments and exactly-one movement behavior; supplier create/edit/archive/reactivate; supplier pagination/search; product and variation relationships; purchase-order default cost; partial and complete receiving with actual cost; idempotent retry; weighted-average history; parent- and self-managed variations; initial-cost and correction workflows; uncosted aggregate warning; attention-state visibility; inventory non-interference; desktop/390px RTL layout; clean browser console; and activation alongside Orderino. The automated smoke scripts cover these server-side paths.
+Validate activation with and without WooCommerce; admin asset scoping; inventory pagination and filters; stock adjustments and exactly-one movement behavior; supplier create/edit/archive/reactivate; supplier pagination/search; product and variation relationships; purchase-order default cost; partial and complete receiving with actual cost; idempotent retry; weighted-average history; parent- and self-managed variations; initial-cost and correction workflows; uncosted aggregate warning; reorder filters/explanations/MOQ/multiples/incoming POs/settings/grouped draft creation/stale skips/no-supplier/attention states; inventory non-interference; desktop/390px RTL layout; clean browser console; and activation alongside Orderino. The automated smoke and browser scripts cover these paths.
 
 ## Roadmap status
 
@@ -179,7 +222,8 @@ Validate activation with and without WooCommerce; admin asset scoping; inventory
 - Phase 2: supplier management — complete
 - Phase 3: purchase orders and receiving — complete
 - Phase 4: costs and inventory valuation — complete
-- Phase 5–6: reorder intelligence and commercial release — not implemented
+- Phase 5: deterministic low-stock and reorder recommendations — complete
+- Phase 6: commercial release — not implemented
 
 ## Data retention
 
