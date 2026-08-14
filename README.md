@@ -12,6 +12,10 @@ Stockino is an independent commercial WooCommerce operations plugin for purchasi
 
 Stockino uses its own `Stockino\\` PHP namespace, `stockino` text domain, `stockino/v1` REST namespace, `stockino_*` options/tables, and `stockino-` asset handles/classes so it can coexist with Orderino.
 
+## UI typography
+
+The Stockino admin uses locally bundled Vazirmatn v33.003 Regular, Medium, SemiBold, and Bold webfonts for Persian, Latin, and numeric content. Vite fingerprints the four WOFF2 assets during production builds; no runtime font CDN is used. The original files are distributed under the SIL Open Font License 1.1, retained at `admin/src/assets/fonts/vazirmatn/OFL.txt`.
+
 ## Development
 
 ```bash
@@ -192,6 +196,7 @@ npm run qa:purchasing
 npm run qa:valuation
 npm run qa:coexistence
 npm run qa:reorder
+npm run qa:typography
 docker compose run --rm --entrypoint php composer vendor/bin/phpunit
 docker compose run --rm --entrypoint php composer vendor/bin/phpcs --standard=phpcs.xml.dist
 ```

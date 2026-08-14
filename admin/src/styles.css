@@ -2,18 +2,82 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('./assets/fonts/vazirmatn/Vazirmatn-Regular.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('./assets/fonts/vazirmatn/Vazirmatn-Medium.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('./assets/fonts/vazirmatn/Vazirmatn-SemiBold.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('./assets/fonts/vazirmatn/Vazirmatn-Bold.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
 #stockino-admin-root {
   --stockino-ink: #13233b;
   --stockino-muted: #64748b;
   --stockino-brand: #2563eb;
   --stockino-canvas: #f4f7fb;
+  --stockino-font-family: 'Vazirmatn', Tahoma, Arial, sans-serif;
+  --stockino-type-page-title: clamp(1.75rem, 3vw, 2.375rem);
+  --stockino-type-section-title: 1.125rem;
+  --stockino-type-card-title: .875rem;
+  --stockino-type-body: .8125rem;
+  --stockino-type-secondary: .75rem;
+  --stockino-type-caption: .6875rem;
+  --stockino-type-label: .75rem;
+  --stockino-type-button: .8125rem;
+  --stockino-type-table-header: .75rem;
+  --stockino-type-table-body: .8125rem;
+  --stockino-type-numeric: .875rem;
+  --stockino-type-badge: .6875rem;
+  --stockino-type-input: .8125rem;
+  --stockino-type-helper: .75rem;
+  --stockino-leading-heading: 1.45;
+  --stockino-leading-body: 1.75;
+  --stockino-leading-compact: 1.55;
+  --stockino-leading-control: 1.4;
+  --stockino-leading-badge: 1.35;
+  --stockino-weight-regular: 400;
+  --stockino-weight-medium: 500;
+  --stockino-weight-semibold: 600;
+  --stockino-weight-bold: 700;
   color: var(--stockino-ink);
   direction: rtl;
-  font-family: Vazirmatn, Tahoma, Arial, sans-serif;
+  font-family: var(--stockino-font-family);
+  font-size: var(--stockino-type-body);
+  font-weight: var(--stockino-weight-regular);
+  line-height: var(--stockino-leading-body);
+  font-synthesis: none;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-#stockino-admin-root * { box-sizing: border-box; }
+#stockino-admin-root * {
+  box-sizing: border-box;
+  font-family: inherit;
+}
 
 .stockino-app {
   min-height: calc(100vh - 80px);
@@ -228,3 +292,333 @@
   .stockino-reorder-detail-body { padding:11px; }.stockino-reorder-equation { grid-template-columns:1fr 1fr; }.stockino-reorder-equation > i { display:none; }.stockino-reorder-settings-grid { grid-template-columns:1fr; }
 }
 @media (max-width:430px) { .stockino-reorder-stats { grid-template-columns:1fr 1fr; }.stockino-reorder-filters { grid-template-columns:1fr; }.stockino-reorder-header-action .stockino-button { min-width:0; padding-inline:10px; }.stockino-reorder-equation { grid-template-columns:1fr; } }
+
+/* Central Persian typography system. Kept last so every Stockino workspace shares one scale. */
+#stockino-admin-root :where(button,input,select,textarea,optgroup) {
+  font-family: var(--stockino-font-family);
+  font-size: var(--stockino-type-input);
+  font-weight: var(--stockino-weight-regular);
+  line-height: var(--stockino-leading-control);
+}
+
+#stockino-admin-root :where(button,input:not([type='checkbox']):not([type='radio']),select) {
+  min-height: 40px;
+}
+
+#stockino-admin-root button { min-width: 40px; }
+
+#stockino-admin-root :where(h1,h2,h3) {
+  font-family: var(--stockino-font-family);
+  line-height: var(--stockino-leading-heading);
+  text-wrap: balance;
+}
+
+#stockino-admin-root :where(p,li,figcaption) { text-wrap: pretty; }
+
+#stockino-admin-root :where([dir='ltr'],code,time) {
+  font-family: var(--stockino-font-family);
+  unicode-bidi: isolate;
+}
+
+#stockino-admin-root small,
+#stockino-admin-root time {
+  font-family: var(--stockino-font-family);
+  font-size: var(--stockino-type-caption);
+  font-weight: var(--stockino-weight-regular);
+  line-height: var(--stockino-leading-compact);
+}
+
+.stockino-page-header h1,
+.stockino-shell-header h1 {
+  font-size: var(--stockino-type-page-title);
+  font-weight: var(--stockino-weight-bold);
+  line-height: var(--stockino-leading-heading);
+}
+
+.stockino-dialog h2,
+.stockino-drawer h2 {
+  font-size: var(--stockino-type-section-title);
+  font-weight: var(--stockino-weight-semibold);
+  line-height: var(--stockino-leading-heading);
+}
+
+.stockino-section-head h3 {
+  font-size: var(--stockino-type-section-title);
+  font-weight: var(--stockino-weight-semibold);
+  line-height: var(--stockino-leading-heading);
+}
+
+.stockino-product-name strong,
+.stockino-supplier-name strong,
+.stockino-contact-cell strong,
+.stockino-relation-product strong,
+.stockino-picker-results strong,
+.stockino-po-lines article strong,
+.stockino-receive-lines strong,
+.stockino-valuation-warning strong {
+  font-size: var(--stockino-type-card-title);
+  font-weight: var(--stockino-weight-semibold);
+  line-height: var(--stockino-leading-compact);
+}
+
+.stockino-page-header > div:nth-child(2) > p:last-child,
+.stockino-shell-header p:last-child,
+.stockino-dialog header span,
+.stockino-drawer header span,
+.stockino-reorder-header > div:first-child > span {
+  font-size: var(--stockino-type-body);
+  font-weight: var(--stockino-weight-regular);
+  line-height: var(--stockino-leading-body);
+}
+
+.stockino-eyebrow,
+.stockino-dialog header p,
+.stockino-drawer header p,
+.stockino-section-head small,
+.stockino-reorder-header p {
+  font-family: var(--stockino-font-family);
+  font-size: var(--stockino-type-caption);
+  font-weight: var(--stockino-weight-semibold);
+  line-height: var(--stockino-leading-compact);
+}
+
+.stockino-button,
+.stockino-text-action,
+.stockino-count-chip,
+.stockino-pagination button,
+.stockino-history-pages button,
+.stockino-mini-pagination button,
+.stockino-supplier-options footer button {
+  font-family: var(--stockino-font-family);
+  font-size: var(--stockino-type-button);
+  font-weight: var(--stockino-weight-semibold);
+  line-height: var(--stockino-leading-control);
+  white-space: nowrap;
+}
+
+.stockino-filter-row label:not(.stockino-check-label),
+.stockino-field,
+.stockino-supplier-filter-row label,
+.stockino-purchase-filters label,
+.stockino-filter-picker,
+.stockino-valuation-filters label,
+.stockino-reorder-filters label {
+  font-size: var(--stockino-type-label);
+  font-weight: var(--stockino-weight-semibold);
+  line-height: var(--stockino-leading-compact);
+}
+
+.stockino-search-field input,
+.stockino-filter-row select,
+.stockino-field input,
+.stockino-field select,
+.stockino-field textarea,
+.stockino-purchase-filters select,
+.stockino-supplier-picker-input input,
+.stockino-valuation-filters select,
+.stockino-reorder-filters select,
+.stockino-receive-lines input {
+  font-family: var(--stockino-font-family);
+  font-size: var(--stockino-type-input);
+  font-weight: var(--stockino-weight-regular);
+  line-height: var(--stockino-leading-control);
+}
+
+.stockino-table th {
+  font-size: var(--stockino-type-table-header);
+  font-weight: var(--stockino-weight-semibold);
+  line-height: var(--stockino-leading-compact);
+}
+
+.stockino-table td {
+  font-size: var(--stockino-type-table-body);
+  font-weight: var(--stockino-weight-regular);
+  line-height: var(--stockino-leading-compact);
+}
+
+.stockino-product-name,
+.stockino-supplier-name,
+.stockino-relation-product,
+.stockino-po-lines article > div:first-child {
+  overflow-wrap: anywhere;
+}
+
+.stockino-product-name small,
+.stockino-supplier-name small,
+.stockino-contact-cell small,
+.stockino-relation-product span,
+.stockino-picker-results small,
+.stockino-po-lines article span,
+.stockino-receive-lines small,
+.stockino-receipt-history small,
+.stockino-cost-history-list article > header small,
+.stockino-cost-history-list article > footer,
+.stockino-reorder-result-links small,
+.stockino-incoming-card footer {
+  font-size: var(--stockino-type-caption);
+  font-weight: var(--stockino-weight-regular);
+  line-height: var(--stockino-leading-compact);
+}
+
+.stockino-stat span:not(.stockino-stat-icon),
+.stockino-supplier-profile dt,
+.stockino-po-summary dt,
+.stockino-po-lines dt,
+.stockino-cost-current span,
+.stockino-cost-grid span,
+.stockino-reorder-quantity span,
+.stockino-incoming-card div span,
+.stockino-incoming-card header span {
+  font-size: var(--stockino-type-secondary);
+  font-weight: var(--stockino-weight-regular);
+  line-height: var(--stockino-leading-compact);
+}
+
+.stockino-badge,
+.stockino-supplier-status,
+.stockino-po-status,
+.stockino-receipt-state,
+.stockino-cost-status,
+.stockino-cost-movement,
+.stockino-reorder-state,
+.stockino-reorder-state i {
+  font-size: var(--stockino-type-badge);
+  font-weight: var(--stockino-weight-semibold);
+  line-height: var(--stockino-leading-badge);
+}
+
+.stockino-form-error,
+.stockino-page-error,
+.stockino-inline-warning,
+.stockino-purchase-guidance,
+.stockino-field small,
+.stockino-receipt-detail span,
+.stockino-valuation-warning span,
+.stockino-reorder-explanation p,
+.stockino-reorder-result ul {
+  font-size: var(--stockino-type-helper);
+  font-weight: var(--stockino-weight-regular);
+  line-height: var(--stockino-leading-body);
+}
+
+.stockino-tabular,
+.stockino-quantity,
+.stockino-delta,
+.stockino-quantity-inline,
+.stockino-po-number,
+.stockino-stock-route,
+.stockino-movement-head strong,
+.stockino-po-summary dd,
+.stockino-po-lines dd,
+.stockino-receipt-history strong,
+.stockino-receipt-history b,
+.stockino-receipt-detail strong,
+.stockino-receipt-detail p,
+.stockino-cost-current strong,
+.stockino-cost-grid b,
+.stockino-line-total,
+.stockino-reorder-header-action strong,
+.stockino-reorder-quantity strong,
+.stockino-reorder-equation small,
+.stockino-reorder-equation strong,
+.stockino-incoming-card header strong,
+.stockino-incoming-card b,
+#stockino-admin-root code {
+  font-family: var(--stockino-font-family);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+}
+
+.stockino-quantity,
+.stockino-current-stock strong,
+.stockino-stat strong {
+  font-weight: var(--stockino-weight-semibold);
+  line-height: var(--stockino-leading-heading);
+}
+
+.stockino-delta,
+.stockino-quantity-inline,
+.stockino-po-number,
+.stockino-stock-route,
+.stockino-movement-head strong,
+.stockino-po-summary dd,
+.stockino-po-lines dd,
+.stockino-receipt-history strong,
+.stockino-receipt-history b,
+.stockino-receipt-detail strong,
+.stockino-receipt-detail p,
+.stockino-cost-current strong,
+.stockino-cost-grid b,
+.stockino-line-total,
+.stockino-reorder-quantity strong,
+.stockino-incoming-card header strong,
+.stockino-incoming-card b,
+#stockino-admin-root code {
+  font-size: var(--stockino-type-numeric);
+  font-weight: var(--stockino-weight-semibold);
+  line-height: var(--stockino-leading-compact);
+}
+
+.stockino-reorder-equation small {
+  font-size: var(--stockino-type-caption);
+  font-weight: var(--stockino-weight-medium);
+  line-height: var(--stockino-leading-compact);
+}
+
+.stockino-reorder-equation strong {
+  font-size: 1rem;
+  font-weight: var(--stockino-weight-semibold);
+  line-height: var(--stockino-leading-heading);
+}
+
+.stockino-relation-meta span,
+.stockino-supplier-options > p,
+.stockino-mini-pagination,
+.stockino-pagination,
+.stockino-reorder-selection {
+  font-size: var(--stockino-type-secondary);
+  font-weight: var(--stockino-weight-regular);
+  line-height: var(--stockino-leading-compact);
+}
+
+.stockino-purchase-guidance b,
+.stockino-reorder-result-links b {
+  font-family: var(--stockino-font-family);
+  font-size: var(--stockino-type-secondary);
+  font-weight: var(--stockino-weight-semibold);
+  line-height: var(--stockino-leading-compact);
+}
+
+.stockino-movement p,
+.stockino-cost-history-list article > header strong {
+  font-size: var(--stockino-type-card-title);
+  font-weight: var(--stockino-weight-semibold);
+  line-height: var(--stockino-leading-compact);
+}
+
+.stockino-reorder-header-action strong {
+  font-weight: var(--stockino-weight-semibold);
+  line-height: var(--stockino-leading-heading);
+}
+
+.stockino-reorder-equation > i {
+  font-weight: var(--stockino-weight-bold);
+}
+
+@media (max-width: 782px) {
+  .stockino-table td,
+  .stockino-table td::before {
+    font-size: var(--stockino-type-table-body);
+    line-height: var(--stockino-leading-compact);
+  }
+
+  .stockino-stat span:not(.stockino-stat-icon),
+  .stockino-page-header > div:nth-child(2) > p:last-child {
+    font-size: var(--stockino-type-secondary);
+  }
+}
+
+@media (max-width: 430px) {
+  .stockino-page-header h1 { font-size: 1.625rem; }
+  .stockino-eyebrow { font-size: var(--stockino-type-caption); }
+}

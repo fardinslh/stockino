@@ -28,7 +28,7 @@ try {
   const search = page.locator('.stockino-supplier-toolbar .stockino-search-field input');
   await search.fill('SUP-001');
   await apiResponse('/stockino/v1/suppliers');
-  await page.locator('.stockino-supplier-table tbody tr').first().waitFor();
+  await page.waitForFunction(() => document.querySelectorAll('.stockino-supplier-table tbody tr').length === 1);
   if (await page.locator('.stockino-supplier-table tbody tr').count() !== 1) failures.push('supplier search did not return one row');
 
   await page.locator('.stockino-header-action').click();
