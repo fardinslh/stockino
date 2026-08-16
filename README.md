@@ -194,6 +194,7 @@ npm run qa:browser
 npm run qa:suppliers
 npm run qa:purchasing
 npm run qa:valuation
+npm run qa:marketplaces
 npm run qa:coexistence
 npm run qa:reorder
 npm run qa:typography
@@ -202,6 +203,33 @@ docker compose run --rm --entrypoint php composer vendor/bin/phpcs --standard=ph
 ```
 
 Browser QA uses local Chrome by default. Set `STOCKINO_BROWSER_PATH` and `STOCKINO_BASE_URL` when those paths differ.
+
+## Marketplaces, Product Publishing & Orderino Integration
+
+Database version `5.0.0` introduces complete marketplace integration, generic product publishing, inventory synchronization, and order bridging:
+
+- **Marketplaces Database Tables**:
+  - `{prefix}stockino_marketplace_connections`: Credential storage, masked PAT tokens, vendor slugs, preparation days, and live status.
+  - `{prefix}stockino_marketplace_products`: Maps WooCommerce products/variations to external marketplace IDs with publication states (`not_published`, `publishing`, `published`, `error`, `sync_failed`) and auto-sync flags.
+  - `{prefix}stockino_marketplace_logs`: Centralized audit log and structured diagnostics for publishing, stock updates, and order syncs.
+- **Generic Publishing Engine & Selective Control**:
+  - Independent publishing lifecycle (`DRAFT`, `READY`, `PENDING`, `PUBLISHED`, `FAILED`, `UNPUBLISHED`).
+  - Selective field synchronization toggles: Price, Inventory, Images, Descriptions, and Dry-run Preview mode.
+- **Marketplace Adapters (`MarketplaceAdapterInterface`)**:
+  - `BasalamAdapter`: OpenAPI REST integration with PAT authentication, category tree parsing, product creation/updating with weights and preparation days, stock synchronization, order fetching (`/v1/vendors/{id}/orders`), and Persian error translations.
+  - `DigikalaAdapter`: Digikala Seller API adapter for variants and order fetching.
+  - `TorobAdapter`: Torob price feed and search engine integration.
+  - `MockMarketplaceAdapter`: Deterministic testing adapter for CI and local development.
+- **Order Synchronization & Orderino Integration**:
+  - `OrderNormalizer`: Maps raw marketplace orders to canonical `CanonicalOrder` domain objects (`PENDING`, `PROCESSING`, `SHIPPED`, `DELIVERED`, `CANCELLED`, `RETURNED`).
+  - `OrderSyncService`: Prevents duplicates via `_stockino_marketplace_order_id`, matches SKUs to local WooCommerce products, accounts for inventory, and creates `WC_Order` instances.
+  - `OrderinoBridge`: Attaches `_orderino_source` metadata, adds sales channel badges to WooCommerce and Orderino order tables, and keeps Orderino fully decoupled from raw marketplace APIs.
+- **WP-CLI Commands**:
+  - `wp stockino import <file> [--dry-run]`
+  - `wp stockino publish --product=<id> [--dry-run]`
+  - `wp stockino sync-inventory [--product=<id>]`
+  - `wp stockino sync-orders [--marketplace=basalam]`
+  - `wp stockino sync-all [--marketplace=basalam]`
 
 ## Known limitations
 
@@ -218,7 +246,7 @@ Browser QA uses local Chrome by default. Set `STOCKINO_BROWSER_PATH` and `STOCKI
 
 ## Manual QA
 
-Validate activation with and without WooCommerce; admin asset scoping; inventory pagination and filters; stock adjustments and exactly-one movement behavior; supplier create/edit/archive/reactivate; supplier pagination/search; product and variation relationships; purchase-order default cost; partial and complete receiving with actual cost; idempotent retry; weighted-average history; parent- and self-managed variations; initial-cost and correction workflows; uncosted aggregate warning; reorder filters/explanations/MOQ/multiples/incoming POs/settings/grouped draft creation/stale skips/no-supplier/attention states; inventory non-interference; desktop/390px RTL layout; clean browser console; and activation alongside Orderino. The automated smoke and browser scripts cover these paths.
+Validate activation with and without WooCommerce; admin asset scoping; inventory pagination and filters; stock adjustments and exactly-one movement behavior; supplier create/edit/archive/reactivate; supplier pagination/search; product and variation relationships; purchase-order default cost; partial and complete receiving with actual cost; idempotent retry; weighted-average history; parent- and self-managed variations; initial-cost and correction workflows; uncosted aggregate warning; reorder filters/explanations/MOQ/multiples/incoming POs/settings/grouped draft creation/stale skips/no-supplier/attention states; marketplace connection management; Basalam and Mock publishing; selective field synchronization; CSV import modal; order synchronization; Orderino sales channel badge visibility; inventory non-interference; desktop/390px RTL layout; clean browser console; and activation alongside Orderino. The automated smoke and browser scripts cover these paths.
 
 ## Roadmap status
 
@@ -228,8 +256,12 @@ Validate activation with and without WooCommerce; admin asset scoping; inventory
 - Phase 3: purchase orders and receiving — complete
 - Phase 4: costs and inventory valuation — complete
 - Phase 5: deterministic low-stock and reorder recommendations — complete
-- Phase 6: commercial release — not implemented
+- Phase 6: marketplace database, connections and adapters — complete
+- Phase 7: generic product publishing engine and selective sync — complete
+- Phase 8: inventory synchronization engine — complete
+- Phase 9: marketplace order synchronization and Orderino integration — complete
+- Phase 10: central sync engine, webhooks and multi-marketplace adapters (Basalam, Digikala, Torob, Mock) — complete
 
 ## Data retention
 
-Stock and cost movements are operational audit records and are retained on uninstall by default. Stockino never removes WooCommerce products, orders, or stock data.
+Stock, cost movements, and marketplace audit logs are operational audit records and are retained on uninstall by default. Stockino never removes WooCommerce products, orders, or stock data.

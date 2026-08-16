@@ -31,6 +31,13 @@ try {
 
   await page.goto(`${baseUrl}/wp-admin/admin.php?page=stockino-suppliers`, { waitUntil: 'domcontentloaded' });
   await page.locator('.stockino-suppliers-app h1').waitFor();
+
+  await page.goto(`${baseUrl}/wp-admin/admin.php?page=stockino-marketplaces`, { waitUntil: 'networkidle' });
+  await page.locator('.stockino-page-header h1, #stockino-admin-root h1').waitFor();
+  const marketplaceAssets = await page.locator('script[src],link[href]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('src') ?? node.getAttribute('href') ?? ''));
+  if (!marketplaceAssets.some((url) => url.includes('/plugins/stockino/'))) failures.push('Stockino marketplaces page did not load its scoped assets');
+  if (marketplaceAssets.some((url) => url.includes('/plugins/orderino/'))) failures.push('Orderino assets leaked onto Stockino marketplaces page');
+
   const rest = await page.request.get(`${baseUrl}/?rest_route=/`);
   const namespaces = (await rest.json()).namespaces;
   if (!namespaces.includes('orderino/v1') || !namespaces.includes('stockino/v1')) failures.push('Separate REST namespaces are not both registered');
