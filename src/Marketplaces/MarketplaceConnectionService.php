@@ -105,6 +105,20 @@ final class MarketplaceConnectionService {
 			sprintf( 'تنظیمات بازارگاه %s ذخیره شد.', $marketplace )
 		);
 
+		if ( is_array( $connection ) ) {
+			if ( ! empty( $connection['credentials'] ) ) {
+				$creds = json_decode( (string) $connection['credentials'], true );
+				if ( is_array( $creds ) && ! empty( $creds['access_token'] ) ) {
+					$token = (string) $creds['access_token'];
+					$creds['access_token_masked'] = strlen( $token ) > 8
+						? substr( $token, 0, 4 ) . '...' . substr( $token, -4 )
+						: '***';
+				}
+				$connection['credentials_meta'] = $creds;
+				unset( $connection['credentials'] );
+			}
+		}
+
 		return $connection ?? array();
 	}
 

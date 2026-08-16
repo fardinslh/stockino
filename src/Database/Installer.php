@@ -301,7 +301,6 @@ final class Installer {
 		);
 	}
 
-<<<<<<< HEAD
 	private static function create_reorder_tables(): void {
 		global $wpdb;
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';

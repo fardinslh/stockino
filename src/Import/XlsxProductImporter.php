@@ -7,6 +7,8 @@ namespace Stockino\Import;
 use ZipArchive;
 
 final class XlsxProductImporter implements ProductImportInterface {
+	public const MAX_ROWS = 5000;
+
 	public function parse_file( string $file_path ): array {
 		if ( ! file_exists( $file_path ) || ! is_readable( $file_path ) ) {
 			throw new \InvalidArgumentException( sprintf( 'فایل اکسل یافت نشد: %s', $file_path ) );
@@ -57,10 +59,17 @@ final class XlsxProductImporter implements ProductImportInterface {
 		}
 
 		$rows_data = array();
+		$row_count = 0;
+
 		foreach ( $xml->sheetData->row as $row ) {
+			$row_count++;
+			if ( $row_count > self::MAX_ROWS + 1 ) {
+				break;
+			}
+
 			$row_cells = array();
 			foreach ( $row->c as $cell ) {
-				$val = (string) $cell->v;
+				$val  = (string) $cell->v;
 				$type = (string) $cell['t'];
 				if ( 's' === $type && isset( $shared_strings[ (int) $val ] ) ) {
 					$val = $shared_strings[ (int) $val ];
@@ -84,7 +93,12 @@ final class XlsxProductImporter implements ProductImportInterface {
 			$data = array_pad( $data, count( $headers ), '' );
 			$row  = array();
 			foreach ( $headers as $idx => $h ) {
-				$row[ $h ] = $data[ $idx ] ?? '';
+				$val = $data[ $idx ] ?? '';
+				// Formula injection protection
+				if ( in_array( substr( (string) $val, 0, 1 ), array( '=', '+', '-', '@' ), true ) && ! is_numeric( $val ) ) {
+					$val = "'" . $val;
+				}
+				$row[ $h ] = $val;
 			}
 			$results[] = $row;
 		}

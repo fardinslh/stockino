@@ -268,11 +268,11 @@ final class MarketplaceRestApi {
 
 	public function list_products( WP_REST_Request $request ): WP_REST_Response {
 		$params = array(
-			'page'        => (int) ( $request->get_param( 'page' ) ?: 1 ),
-			'per_page'    => (int) ( $request->get_param( 'per_page' ) ?: 20 ),
-			'search'      => (string) ( $request->get_param( 'search' ) ?: '' ),
-			'status'      => (string) ( $request->get_param( 'status' ) ?: '' ),
-			'marketplace' => (string) ( $request->get_param( 'marketplace' ) ?: 'basalam' ),
+			'page'        => max( 1, (int) ( $request->get_param( 'page' ) ?: 1 ) ),
+			'per_page'    => max( 1, min( 100, (int) ( $request->get_param( 'per_page' ) ?: 20 ) ) ),
+			'search'      => sanitize_text_field( (string) ( $request->get_param( 'search' ) ?: '' ) ),
+			'status'      => sanitize_text_field( (string) ( $request->get_param( 'status' ) ?: '' ) ),
+			'marketplace' => sanitize_text_field( (string) ( $request->get_param( 'marketplace' ) ?: 'basalam' ) ),
 		);
 
 		return new WP_REST_Response( $this->repository->list_publication_products( $params ) );
@@ -342,8 +342,8 @@ final class MarketplaceRestApi {
 	}
 
 	public function get_logs( WP_REST_Request $request ): WP_REST_Response {
-		$page          = (int) ( $request->get_param( 'page' ) ?: 1 );
-		$per_page      = (int) ( $request->get_param( 'per_page' ) ?: 20 );
+		$page          = max( 1, (int) ( $request->get_param( 'page' ) ?: 1 ) );
+		$per_page      = max( 1, min( 100, (int) ( $request->get_param( 'per_page' ) ?: 20 ) ) );
 		$connection_id = $request->get_param( 'connection_id' ) ? (int) $request->get_param( 'connection_id' ) : null;
 		$product_id    = $request->get_param( 'product_id' ) ? (int) $request->get_param( 'product_id' ) : null;
 

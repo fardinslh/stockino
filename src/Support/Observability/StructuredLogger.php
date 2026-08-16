@@ -45,12 +45,14 @@ final class StructuredLogger {
 			$message = sprintf( '[%s] %s', $data['error_code'], $message );
 		}
 
+		$context = $this->redact_sensitive_data( $data['context'] ?? array() );
+
 		$payload = array(
-			'sync_id'    => $data['sync_id'] ?? wp_generate_uuid4(),
+			'sync_id'    => $data['sync_id'] ?? ( function_exists( 'wp_generate_uuid4' ) ? wp_generate_uuid4() : bin2hex( random_bytes( 16 ) ) ),
 			'request_id' => $data['request_id'] ?? null,
 			'attempt'    => $data['attempt'] ?? 1,
 			'order_id'   => $data['order_id'] ?? null,
-			'context'    => $data['context'] ?? array(),
+			'context'    => $context,
 		);
 
 		if ( $this->repository ) {
@@ -67,5 +69,26 @@ final class StructuredLogger {
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG && defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
 			error_log( sprintf( '[Stockino][%s][%s] %s %s', $data['marketplace'], $action, $message, wp_json_encode( $payload ) ) );
 		}
+	}
+
+	/**
+	 * @param array<string, mixed> $data
+	 * @return array<string, mixed>
+	 */
+	private function redact_sensitive_data( array $data ): array {
+		$sensitive_keys = array( 'token', 'access_token', 'pat', 'secret', 'password', 'api_key', 'authorization', 'credentials' );
+		$sanitized      = array();
+
+		foreach ( $data as $key => $value ) {
+			if ( in_array( strtolower( (string) $key ), $sensitive_keys, true ) ) {
+				$sanitized[ $key ] = '***REDACTED***';
+			} elseif ( is_array( $value ) ) {
+				$sanitized[ $key ] = $this->redact_sensitive_data( $value );
+			} else {
+				$sanitized[ $key ] = $value;
+			}
+		}
+
+		return $sanitized;
 	}
 }
