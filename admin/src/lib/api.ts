@@ -56,51 +56,60 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
     const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
     throw new ApiError(body.message ?? 'خطای ناشناخته‌ای رخ داد.', response.status, body.code);
   }
-
   return response.json() as Promise<T>;
 };
 
-const queryString = (params: Record<string, unknown>): string =>
-  Object.entries(params)
-    .filter(([, value]) => value !== undefined && value !== null && value !== '')
-    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
-    .join('&');
+const queryString = (params: object): string => {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== '' && value !== undefined && value !== null) query.set(key, String(value));
+  });
+  return query.toString();
+};
 
 export const inventoryApi = {
-  list: (params: InventoryParams): Promise<Paginated<InventoryProduct>> => request(`inventory?${queryString(params)}`),
+  list: (params: InventoryParams): Promise<Paginated<InventoryProduct>> =>
+    request(`inventory?${queryString(params)}`),
   stats: (): Promise<InventoryStatsData> => request('inventory/stats'),
   filters: (): Promise<InventoryFiltersData> => request('inventory/filters'),
-  history: (id: number, page: number): Promise<Paginated<StockMovement>> => request(`inventory/${id}/history?${queryString({ page, per_page: 20 })}`),
-  adjust: (id: number, payload: AdjustmentPayload): Promise<AdjustmentResult> => request(`inventory/${id}/adjustments`, { method: 'POST', body: JSON.stringify(payload) }),
-  bulkAdjust: (product_ids: number[], payload: AdjustmentPayload): Promise<BulkAdjustmentResult> => request('inventory/bulk-adjustments', { method: 'POST', body: JSON.stringify({ product_ids, ...payload }) }),
+  movements: (productId: number, page = 1): Promise<Paginated<StockMovement>> =>
+    request(`products/${productId}/movements?page=${page}&per_page=20`),
+  adjust: (productId: number, payload: AdjustmentPayload): Promise<AdjustmentResult> =>
+    request(`products/${productId}/adjust-stock`, { method: 'POST', body: JSON.stringify(payload) }),
+  bulkAdjust: (productIds: number[], payload: Omit<AdjustmentPayload, 'mode' | 'expected_current'>): Promise<BulkAdjustmentResult> =>
+    request('inventory/bulk-adjust', { method: 'POST', body: JSON.stringify({ product_ids: productIds, ...payload }) }),
+  exportUrl: (params: InventoryParams): string => endpoint(`inventory/export?${queryString(params)}`),
 };
 
 export const supplierApi = {
-  list: (params: SupplierParams): Promise<SupplierPageData> => request(`suppliers?${queryString(params)}`),
+  list: (params: SupplierParams): Promise<SupplierPageData<SupplierListItem>> => request(`suppliers?${queryString(params)}`),
   stats: (): Promise<SupplierStats> => request('suppliers/stats'),
   get: (id: number): Promise<SupplierDetail> => request(`suppliers/${id}`),
-  create: (payload: SupplierInput): Promise<SupplierListItem> => request('suppliers', { method: 'POST', body: JSON.stringify(payload) }),
-  update: (id: number, payload: SupplierInput): Promise<SupplierListItem> => request(`suppliers/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
-  archive: (id: number): Promise<SupplierListItem> => request(`suppliers/${id}/archive`, { method: 'POST' }),
-  reactivate: (id: number): Promise<SupplierListItem> => request(`suppliers/${id}/reactivate`, { method: 'POST' }),
-  products: (supplierId: number, params: { page?: number; per_page?: number; search?: string }): Promise<Paginated<SupplierProduct>> => request(`suppliers/${supplierId}/products?${queryString(params)}`),
-  linkProduct: (supplierId: number, payload: RelationshipInput): Promise<SupplierProduct> => request(`suppliers/${supplierId}/products`, { method: 'POST', body: JSON.stringify(payload) }),
-  updateProduct: (supplierId: number, relationId: number, payload: RelationshipInput): Promise<SupplierProduct> => request(`suppliers/${supplierId}/products/${relationId}`, { method: 'PUT', body: JSON.stringify(payload) }),
-  unlinkProduct: (supplierId: number, relationId: number): Promise<unknown> => request(`suppliers/${supplierId}/products/${relationId}`, { method: 'DELETE' }),
-  searchProducts: (query: string): Promise<Array<{ id: number; name: string; sku: string; type: string }>> => request(`products/search?${queryString({ q: query })}`),
+  create: (payload: SupplierInput): Promise<SupplierDetail> => request('suppliers', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (id: number, payload: Partial<SupplierInput>): Promise<SupplierDetail> => request(`suppliers/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  archive: (id: number): Promise<SupplierDetail> => request(`suppliers/${id}/archive`, { method: 'POST' }),
+  reactivate: (id: number): Promise<SupplierDetail> => request(`suppliers/${id}/reactivate`, { method: 'POST' }),
+  products: (id: number, page: number, search: string): Promise<SupplierPageData<SupplierProduct>> => request(`suppliers/${id}/products?${queryString({ page, per_page: 20, search })}`),
+  linkProduct: (id: number, payload: RelationshipInput & { product_id: number }): Promise<SupplierProduct> => request(`suppliers/${id}/products`, { method: 'POST', body: JSON.stringify(payload) }),
+  updateProduct: (id: number, productId: number, payload: RelationshipInput): Promise<SupplierProduct> => request(`suppliers/${id}/products/${productId}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  unlinkProduct: (id: number, productId: number): Promise<{ deleted: true }> => request(`suppliers/${id}/products/${productId}`, { method: 'DELETE' }),
+  searchProducts: (search: string): Promise<Paginated<InventoryProduct>> => request(`products/search?${queryString({ search, page: 1, per_page: 20 })}`),
 };
 
 export const purchasingApi = {
-  list: (params: PurchaseOrderParams): Promise<PurchasePage> => request(`purchase-orders?${queryString(params)}`),
+  list: (params: PurchaseOrderParams): Promise<PurchasePage<PurchaseOrder>> => request(`purchase-orders?${queryString(params)}`),
   stats: (): Promise<PurchaseOrderStats> => request('purchase-orders/stats'),
   get: (id: number): Promise<PurchaseOrderDetail> => request(`purchase-orders/${id}`),
-  create: (payload: PurchaseOrderInput): Promise<PurchaseOrder> => request('purchase-orders', { method: 'POST', body: JSON.stringify(payload) }),
-  update: (id: number, payload: PurchaseOrderInput): Promise<PurchaseOrder> => request(`purchase-orders/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
-  markOrdered: (id: number): Promise<PurchaseOrder> => request(`purchase-orders/${id}/mark-ordered`, { method: 'POST' }),
-  cancel: (id: number, reason: string): Promise<PurchaseOrder> => request(`purchase-orders/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
-  receipts: (id: number, page: number): Promise<Paginated<PurchaseReceipt>> => request(`purchase-orders/${id}/receipts?${queryString({ page, per_page: 20 })}`),
-  receive: (id: number, payload: { idempotency_key: string; note?: string; lines: Array<{ item_id: number; quantity: string; actual_unit_cost?: string; note?: string }> }): Promise<PurchaseReceipt> => request(`purchase-orders/${id}/receive`, { method: 'POST', body: JSON.stringify(payload) }),
-  supplierDefaults: (supplierId: number, productIds: number[]): Promise<Array<{ product_id: number; supplier_sku: string; default_unit_cost: string | null }>> => request(`suppliers/${supplierId}/product-defaults?${queryString({ product_ids: productIds.join(',') })}`),
+  create: (payload: PurchaseOrderInput): Promise<PurchaseOrderDetail> => request('purchase-orders', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (id: number, payload: Partial<PurchaseOrderInput>): Promise<PurchaseOrderDetail> => request(`purchase-orders/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  markOrdered: (id: number): Promise<PurchaseOrderDetail> => request(`purchase-orders/${id}/mark-ordered`, { method: 'POST' }),
+  cancel: (id: number): Promise<PurchaseOrderDetail> => request(`purchase-orders/${id}/cancel`, { method: 'POST' }),
+  addItem: (id: number, payload: { product_id: number; ordered_quantity: string; ordered_unit_cost: string | null; notes?: string }): Promise<PurchaseOrderItem> => request(`purchase-orders/${id}/items`, { method: 'POST', body: JSON.stringify(payload) }),
+  updateItem: (id: number, itemId: number, payload: { ordered_quantity: string; ordered_unit_cost?: string | null; notes?: string }): Promise<PurchaseOrderItem> => request(`purchase-orders/${id}/items/${itemId}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteItem: (id: number, itemId: number): Promise<{ deleted: true }> => request(`purchase-orders/${id}/items/${itemId}`, { method: 'DELETE' }),
+  receipts: (id: number): Promise<PurchasePage<PurchaseReceipt>> => request(`purchase-orders/${id}/receipts?page=1&per_page=20`),
+  receipt: (id: number): Promise<PurchaseReceipt> => request(`purchase-receipts/${id}`),
+  receive: (id: number, payload: { idempotency_key: string; note: string; items: { item_id: number; quantity: string; actual_unit_cost: string }[] }): Promise<PurchaseReceipt> => request(`purchase-orders/${id}/receipts`, { method: 'POST', body: JSON.stringify(payload) }),
 };
 
 export const valuationApi = {
