@@ -31,6 +31,7 @@ final class Installer {
 		}
 		if ( version_compare( $current, '5.0.0', '<' ) ) {
 			self::create_reorder_tables();
+			self::create_marketplace_tables();
 		}
 		update_option( self::OPTION, STOCKINO_DB_VERSION, false );
 	}
@@ -300,6 +301,7 @@ final class Installer {
 		);
 	}
 
+<<<<<<< HEAD
 	private static function create_reorder_tables(): void {
 		global $wpdb;
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
@@ -333,4 +335,70 @@ final class Installer {
 
 		dbDelta( $sql );
 	}
+
+	private static function create_marketplace_tables(): void {
+		global $wpdb;
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+		$connections = $wpdb->prefix . 'stockino_marketplace_connections';
+		$products    = $wpdb->prefix . 'stockino_marketplace_products';
+		$logs        = $wpdb->prefix . 'stockino_marketplace_logs';
+		$charset     = $wpdb->get_charset_collate();
+
+		$sql = "CREATE TABLE {$connections} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			marketplace varchar(50) NOT NULL,
+			name varchar(190) NOT NULL,
+			status varchar(30) NOT NULL DEFAULT 'disconnected',
+			credentials longtext NULL,
+			vendor_id varchar(100) NULL,
+			vendor_name varchar(190) NULL,
+			vendor_identifier varchar(190) NULL,
+			preparation_days int unsigned NOT NULL DEFAULT 1,
+			created_at datetime NOT NULL,
+			updated_at datetime NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY marketplace_unique (marketplace),
+			KEY status (status)
+		) {$charset};
+		CREATE TABLE {$products} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			connection_id bigint(20) unsigned NOT NULL,
+			product_id bigint(20) unsigned NOT NULL,
+			parent_id bigint(20) unsigned NULL,
+			marketplace varchar(50) NOT NULL,
+			external_product_id varchar(100) NULL,
+			external_vendor_id varchar(100) NULL,
+			status varchar(30) NOT NULL DEFAULT 'not_published',
+			category_external_id varchar(100) NULL,
+			auto_sync_stock tinyint(1) NOT NULL DEFAULT 1,
+			last_published_at datetime NULL,
+			last_synced_at datetime NULL,
+			last_error_message text NULL,
+			created_at datetime NOT NULL,
+			updated_at datetime NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY conn_product (connection_id, product_id),
+			KEY product_id (product_id),
+			KEY status (status),
+			KEY marketplace (marketplace)
+		) {$charset};
+		CREATE TABLE {$logs} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			connection_id bigint(20) unsigned NOT NULL,
+			product_id bigint(20) unsigned NULL,
+			action varchar(50) NOT NULL,
+			status varchar(30) NOT NULL,
+			message text NOT NULL,
+			payload_snapshot longtext NULL,
+			created_at datetime NOT NULL,
+			PRIMARY KEY  (id),
+			KEY conn_created (connection_id, created_at),
+			KEY prod_created (product_id, created_at),
+			KEY action (action)
+		) {$charset};";
+
+		dbDelta( $sql );
+	}
 }
+
