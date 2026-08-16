@@ -3,7 +3,7 @@
  * Plugin Name: Stockino
  * Plugin URI: https://github.com/fardinslh/stockino
  * Description: Purchasing and inventory operations for WooCommerce.
- * Version: 0.1.0
+ * Version: 1.0.0
  * Requires at least: 6.5
  * Requires PHP: 8.2
  * Author: Stockino
@@ -15,7 +15,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'STOCKINO_VERSION', '0.1.0' );
+define( 'STOCKINO_VERSION', '1.0.0' );
 define( 'STOCKINO_DB_VERSION', '5.0.0' );
 define( 'STOCKINO_FILE', __FILE__ );
 define( 'STOCKINO_PATH', plugin_dir_path( __FILE__ ) );
@@ -33,6 +33,16 @@ if ( PHP_VERSION_ID < 80200 ) {
 	);
 	return;
 }
+
+// Declare WooCommerce High-Performance Order Storage (HPOS) compatibility
+add_action(
+	'before_woocommerce_init',
+	static function (): void {
+		if ( class_exists( \Automattic\WooCommerce\Utilities\FeaturesUtil::class ) ) {
+			\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', STOCKINO_FILE, true );
+		}
+	}
+);
 
 $stockino_autoload = STOCKINO_PATH . 'vendor/autoload.php';
 if ( file_exists( $stockino_autoload ) ) {

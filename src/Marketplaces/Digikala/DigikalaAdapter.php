@@ -196,9 +196,10 @@ final class DigikalaAdapter implements MarketplaceAdapterInterface {
 				);
 
 				$args = array(
-					'method'  => $method,
-					'headers' => $headers,
-					'timeout' => 20,
+					'method'      => $method,
+					'headers'     => $headers,
+					'timeout'     => 20,
+					'redirection' => 3,
 				);
 
 				if ( null !== $body ) {

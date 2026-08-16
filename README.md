@@ -1,16 +1,19 @@
 # Stockino
 
-Stockino is an independent commercial WooCommerce operations plugin for purchasing and inventory. Version `0.1.0` contains the Phase 0 foundation, Phase 1 inventory dashboard and stock ledger, Phase 2 supplier management, Phase 3 purchase orders and receiving, Phase 4 moving-average inventory costing and valuation, and Phase 5 deterministic reorder recommendations.
+[![Stockino CI](https://github.com/fardinslh/stockino/actions/workflows/ci.yml/badge.svg)](https://github.com/fardinslh/stockino/actions/workflows/ci.yml)
 
-## Requirements
+Stockino is an independent commercial WooCommerce operations plugin for purchasing, inventory management, valuation, reorder intelligence, and multi-marketplace synchronization. Version `1.0.0` represents the complete commercial release.
 
-- WordPress 6.5+
-- WooCommerce 8.5+
-- PHP 8.2+
+## Requirements & Compatibility
+
+- WordPress 6.5+ (tested up to 6.7)
+- WooCommerce 8.5+ (tested up to 9.4)
+- PHP 8.2+ (tested up to 8.3)
+- High-Performance Order Storage (HPOS / Custom Order Tables) fully compatible
 - Node.js 20+ for frontend builds
 - Composer 2 for PHP development
 
-Stockino uses its own `Stockino\\` PHP namespace, `stockino` text domain, `stockino/v1` REST namespace, `stockino_*` options/tables, and `stockino-` asset handles/classes so it can coexist with Orderino.
+Stockino uses its own `Stockino\` PHP namespace, `stockino` text domain, `stockino/v1` REST namespace, `stockino_*` options/tables, and `stockino-` asset handles/classes so it can coexist cleanly with Orderino.
 
 ## UI typography
 

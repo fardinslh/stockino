@@ -1,7 +1,7 @@
 {
   "name": "stockino-admin",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,7 +14,8 @@
     "qa:reorder": "node tests/Browser/reorder-qa.mjs",
     "qa:typography": "node tests/Browser/typography-qa.mjs",
     "qa:marketplaces": "node tests/Browser/marketplace-qa.mjs",
-    "qa:coexistence": "node tests/Browser/coexistence-qa.mjs"
+    "qa:coexistence": "node tests/Browser/coexistence-qa.mjs",
+    "package": "node scripts/package.cjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.66.8",

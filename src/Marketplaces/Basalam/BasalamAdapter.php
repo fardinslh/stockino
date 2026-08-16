@@ -246,9 +246,10 @@ final class BasalamAdapter implements MarketplaceAdapterInterface {
 	private function request( string $method, string $path, ?array $body = null ): array {
 		$url  = $this->base_url . $path;
 		$args = array(
-			'method'  => $method,
-			'timeout' => $this->timeout_seconds,
-			'headers' => array(
+			'method'      => $method,
+			'timeout'     => $this->timeout_seconds,
+			'redirection' => 3,
+			'headers'     => array(
 				'Accept'        => 'application/json',
 				'Authorization' => 'Bearer ' . $this->access_token,
 			),

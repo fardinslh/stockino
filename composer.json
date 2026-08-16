@@ -1,5 +1,6 @@
 {
   "name": "stockino/stockino",
+  "version": "1.0.0",
   "description": "Inventory and procurement operations for WooCommerce.",
   "type": "wordpress-plugin",
   "license": "proprietary",
