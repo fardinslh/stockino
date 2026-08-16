@@ -3,11 +3,12 @@
 namespace Stockino\Admin;
 
 final class AdminPage {
-	private string $inventory_hook  = '';
-	private string $supplier_hook   = '';
-	private string $purchasing_hook = '';
-	private string $valuation_hook  = '';
-	private string $reorder_hook    = '';
+	private string $inventory_hook    = '';
+	private string $supplier_hook     = '';
+	private string $purchasing_hook   = '';
+	private string $valuation_hook    = '';
+	private string $reorder_hook      = '';
+	private string $marketplace_hook  = '';
 
 	public function register(): void {
 		add_action( 'admin_menu', array( $this, 'add_menu' ) );
@@ -70,6 +71,15 @@ final class AdminPage {
 			'stockino-reorder',
 			array( $this, 'render' )
 		);
+
+		$this->marketplace_hook = (string) add_submenu_page(
+			'stockino',
+			__( 'Marketplaces & Publishing', 'stockino' ),
+			__( 'Marketplaces', 'stockino' ),
+			'manage_woocommerce',
+			'stockino-marketplaces',
+			array( $this, 'render' )
+		);
 	}
 
 	public function render(): void {
@@ -77,7 +87,7 @@ final class AdminPage {
 	}
 
 	public function enqueue_assets( string $hook_suffix ): void {
-		if ( ! in_array( $hook_suffix, array( $this->inventory_hook, $this->supplier_hook, $this->purchasing_hook, $this->valuation_hook, $this->reorder_hook ), true ) ) {
+		if ( ! in_array( $hook_suffix, array( $this->inventory_hook, $this->supplier_hook, $this->purchasing_hook, $this->valuation_hook, $this->reorder_hook, $this->marketplace_hook ), true ) ) {
 			return;
 		}
 
@@ -100,7 +110,7 @@ final class AdminPage {
 				'nonce'    => wp_create_nonce( 'wp_rest' ),
 				'locale'   => determine_locale(),
 				'currency' => get_woocommerce_currency(),
-				'page'     => $hook_suffix === $this->supplier_hook ? 'suppliers' : ( $hook_suffix === $this->purchasing_hook ? 'purchase-orders' : ( $hook_suffix === $this->valuation_hook ? 'valuation' : ( $hook_suffix === $this->reorder_hook ? 'reorder' : 'inventory' ) ) ),
+				'page'     => $hook_suffix === $this->supplier_hook ? 'suppliers' : ( $hook_suffix === $this->purchasing_hook ? 'purchase-orders' : ( $hook_suffix === $this->valuation_hook ? 'valuation' : ( $hook_suffix === $this->reorder_hook ? 'reorder' : ( $hook_suffix === $this->marketplace_hook ? 'marketplaces' : 'inventory' ) ) ) ),
 				'adminUrl' => admin_url( 'admin.php' ),
 			)
 		);

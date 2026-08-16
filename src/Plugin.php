@@ -3,75 +3,66 @@
 namespace Stockino;
 
 use Stockino\Admin\AdminPage;
-use Stockino\Database\Installer;
-use Stockino\Database\InventoryCostRepository;
-use Stockino\Database\PurchaseOrderRepository;
-use Stockino\Database\PurchaseReceiptRepository;
-use Stockino\Database\ReorderRepository;
-use Stockino\Database\ReorderSettingsRepository;
-use Stockino\Database\StockMovementRepository;
-use Stockino\Database\SupplierProductRepository;
-use Stockino\Database\SupplierRepository;
-use Stockino\Database\ValuationRepository;
+use Stockino\Costing\InventoryCostRepository;
 use Stockino\Costing\InventoryCostService;
 use Stockino\Costing\MysqlCostLock;
+use Stockino\Costing\ValuationRepository;
 use Stockino\Costing\ValuationService;
-use Stockino\Inventory\ExternalStockTracker;
-use Stockino\Inventory\InventoryService;
+use Stockino\Database\Installer;
+use Stockino\Database\MovementRepository;
 use Stockino\Inventory\InventoryQuery;
-use Stockino\Inventory\InventoryMutationService;
-use Stockino\Inventory\ProductDtoFactory;
-use Stockino\Inventory\StockAdjustmentService;
-use Stockino\REST\RestApi;
+use Stockino\Inventory\InventoryService;
+use Stockino\Inventory\StockMutationService;
+use Stockino\Inventory\StockTracker;
+use Stockino\Purchasing\MysqlReceiveLock;
+use Stockino\Purchasing\PurchaseOrderRepository;
+use Stockino\Purchasing\PurchaseOrderService;
+use Stockino\Purchasing\PurchaseReceivingService;
+use Stockino\Purchasing\PurchaseReceiptRepository;
+use Stockino\Reorder\MysqlReorderLock;
+use Stockino\Reorder\ReorderCalculator;
+use Stockino\Reorder\ReorderRepository;
+use Stockino\Reorder\ReorderService;
+use Stockino\Reorder\ReorderSettingsRepository;
+use Stockino\REST\InventoryRestApi;
 use Stockino\REST\PurchaseOrderRestApi;
 use Stockino\REST\ReorderRestApi;
 use Stockino\REST\SupplierRestApi;
 use Stockino\REST\ValuationRestApi;
-use Stockino\Purchasing\MysqlReceiveLock;
-use Stockino\Purchasing\PurchaseOrderService;
-use Stockino\Purchasing\PurchaseReceivingService;
-use Stockino\Reorder\MysqlReorderLock;
-use Stockino\Reorder\ReorderCalculator;
-use Stockino\Reorder\ReorderService;
-use Stockino\Suppliers\SupplierProductCleanup;
-use Stockino\Suppliers\SupplierProductService;
+use Stockino\Suppliers\SupplierProductRepository;
+use Stockino\Suppliers\SupplierRepository;
 use Stockino\Suppliers\SupplierService;
-use Stockino\Suppliers\SupplierValidator;
 
 final class Plugin {
-	private static bool $booted = false;
+	public static function init(): void {
+		register_activation_hook( STOCKINO_FILE, array( Installer::class, 'install' ) );
 
-	public static function boot(): void {
-		if ( self::$booted ) {
-			return;
-		}
+		add_action( 'plugins_loaded', array( self::class, 'bootstrap' ) );
+	}
 
-		load_plugin_textdomain( 'stockino', false, dirname( plugin_basename( STOCKINO_FILE ) ) . '/languages' );
-
-		if ( ! class_exists( 'WooCommerce' ) ) {
+	public static function bootstrap(): void {
+		if ( ! function_exists( 'WC' ) ) {
 			add_action( 'admin_notices', array( self::class, 'woocommerce_notice' ) );
 			return;
 		}
 
-		self::$booted = true;
-		Installer::maybe_upgrade();
+		Installer::migrate();
+
 		( new AdminPage() )->register();
 
-		$movements = new StockMovementRepository();
-		$tracker   = new ExternalStockTracker( $movements );
-		$mutations = new InventoryMutationService( $movements, $tracker );
-		$inventory = new InventoryService( $movements, new ProductDtoFactory(), new InventoryQuery() );
+		$movements         = new MovementRepository();
+		$mutations         = new StockMutationService( $movements );
+		$tracker           = new StockTracker( $mutations );
 		$tracker->register();
-		( new RestApi( $inventory, new StockAdjustmentService( $mutations ), $movements ) )->register();
-		$validator = new SupplierValidator();
-		$suppliers = new SupplierRepository();
-		$relations = new SupplierProductRepository();
-		( new SupplierProductCleanup( $relations ) )->register();
-		( new SupplierRestApi(
-			new SupplierService( $suppliers, $validator ),
-			new SupplierProductService( $relations, $suppliers, $validator ),
-			$inventory
-		) )->register();
+
+		$inventory_service = new InventoryService( new InventoryQuery(), $mutations, $movements );
+		( new InventoryRestApi( $inventory_service ) )->register();
+
+		$suppliers         = new SupplierRepository();
+		$relations         = new SupplierProductRepository();
+		$supplier_service  = new SupplierService( $suppliers, $relations );
+		( new SupplierRestApi( $supplier_service ) )->register();
+
 		$orders            = new PurchaseOrderRepository();
 		$receipts          = new PurchaseReceiptRepository();
 		$operation_lock    = new MysqlReceiveLock();
@@ -94,10 +85,56 @@ final class Plugin {
 				new MysqlReorderLock()
 			)
 		) )->register();
+
+		$marketplace_repo       = new \Stockino\Database\MarketplaceRepository();
+		$marketplace_conn_srv   = new \Stockino\Marketplaces\MarketplaceConnectionService( $marketplace_repo );
+		$publication_srv        = new \Stockino\Marketplaces\PublicationService( $marketplace_repo, $marketplace_conn_srv );
+		$publishing_engine      = new \Stockino\Publishing\PublishingEngine( $marketplace_repo, $marketplace_conn_srv );
+		$import_pipeline        = new \Stockino\Import\ImportPipelineService();
+		$inventory_sync_engine  = new \Stockino\Sync\InventorySyncEngine( $marketplace_repo, $marketplace_conn_srv );
+		$order_sync_service     = new \Stockino\Orders\OrderSyncService( $marketplace_repo, $marketplace_conn_srv );
+		$orderino_bridge        = new \Stockino\Orders\OrderinoBridge();
+		$orderino_bridge->register();
+		$fulfillment_service    = new \Stockino\Orders\FulfillmentDispatchService( $marketplace_repo, $marketplace_conn_srv );
+		$fulfillment_service->register();
+		$webhook_service        = new \Stockino\Marketplaces\WebhookService( $marketplace_repo, $order_sync_service );
+		$central_sync_engine    = new \Stockino\Sync\CentralSyncEngine( $marketplace_repo, $inventory_sync_engine, $order_sync_service, $publishing_engine );
+
+		( new \Stockino\REST\MarketplaceRestApi(
+			$marketplace_repo,
+			$marketplace_conn_srv,
+			$publication_srv,
+			$import_pipeline,
+			$central_sync_engine,
+			$order_sync_service,
+			$publishing_engine,
+			$webhook_service
+		) )->register();
+
+		// Auto sync marketplace stock on product stock changes
+		add_action(
+			'woocommerce_product_set_stock',
+			static function ( $product ) use ( $inventory_sync_engine ): void {
+				if ( $product instanceof \WC_Product ) {
+					$inventory_sync_engine->sync_product_inventory( (int) $product->get_id() );
+				}
+			}
+		);
+		add_action(
+			'woocommerce_variation_set_stock',
+			static function ( $variation ) use ( $inventory_sync_engine ): void {
+				if ( $variation instanceof \WC_Product ) {
+					$inventory_sync_engine->sync_product_inventory( (int) $variation->get_id() );
+				}
+			}
+		);
+
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			( new \Stockino\Support\FixtureCommand() )->register();
 			( new \Stockino\Support\SupplierFixtureCommand() )->register();
 			( new \Stockino\Support\PurchaseFixtureCommand( $order_service, $receiving_service, $suppliers, $relations ) )->register();
+			( new \Stockino\Support\MarketplaceFixtureCommand( $marketplace_repo, $marketplace_conn_srv, $publication_srv ) )->register();
+			( new \Stockino\Support\StockinoCliCommand( $import_pipeline, $publishing_engine, $inventory_sync_engine, $order_sync_service, $central_sync_engine ) )->register();
 		}
 
 		do_action( 'stockino_loaded' );
