@@ -93,7 +93,7 @@ final class PublishingEngine {
 				array(
 					'connection_id'        => $conn_id,
 					'product_id'           => $product_id,
-					'parent_id'            => $product->get_parent_id() ?: null,
+					'parent_id'            => $product->get_parent_id() ? $product->get_parent_id() : null,
 					'marketplace'          => $marketplace,
 					'external_product_id'  => $external_product_id,
 					'category_external_id' => $payload['category_external_id'],
@@ -149,24 +149,23 @@ final class PublishingEngine {
 	 * @return array<string, mixed>
 	 */
 	private function build_payload( WC_Product $product, PublicationControlOptions $options, array $conn ): array {
-		$title = $product->get_name();
-		$desc  = $options->sync_description ? wp_strip_all_tags( $product->get_description() ?: $title ) : $title;
-		$brief = $options->sync_description ? wp_strip_all_tags( $product->get_short_description() ?: mb_substr( $desc, 0, 150 ) ) : $title;
-
-		$price = $options->sync_price
-			? (int) round( (float) ( $product->get_price() ?: ( $product->get_regular_price() ?: 0 ) ) )
-			: 10000;
-
-		$stock = $options->sync_inventory
+		$title                 = $product->get_name();
+		$description           = $product->get_description();
+		$short_description     = $product->get_short_description();
+		$desc                  = $options->sync_description ? wp_strip_all_tags( $description ? $description : $title ) : $title;
+		$brief                 = $options->sync_description ? wp_strip_all_tags( $short_description ? $short_description : mb_substr( $desc, 0, 150 ) ) : $title;
+		$product_price         = $product->get_price();
+		$product_regular_price = $product->get_regular_price();
+		$price                 = $options->sync_price ? (int) round( (float) ( $product_price ? $product_price : ( $product_regular_price ? $product_regular_price : 0 ) ) ) : 10000;
+		$stock                 = $options->sync_inventory
 			? max( 0, (int) ( $product->get_stock_quantity() ?? 0 ) )
 			: 0;
 
 		$weight_raw   = (float) $product->get_weight();
 		$weight_grams = $weight_raw > 0 ? (int) round( $weight_raw * 1000 ) : 250;
 
-		$cat_id = $options->category_override ?: '100';
-		$prep   = $options->preparation_days ?: (int) ( $conn['preparation_days'] ?? 1 );
-
+		$cat_id = $options->category_override ? $options->category_override : '100';
+		$prep   = $options->preparation_days ? $options->preparation_days : (int) ( $conn['preparation_days'] ?? 1 );
 		return array(
 			'title'                => $title,
 			'description'          => $desc,
@@ -175,7 +174,7 @@ final class PublishingEngine {
 			'price'                => max( 1000, $price ),
 			'stock'                => $stock,
 			'weight_grams'         => $weight_grams,
-			'model'                => $product->get_sku() ?: (string) $product->get_id(),
+			'model'                => $product->get_sku() ? $product->get_sku() : (string) $product->get_id(),
 			'preparation_days'     => $prep,
 		);
 	}

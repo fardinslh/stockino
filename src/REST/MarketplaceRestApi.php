@@ -256,8 +256,8 @@ final class MarketplaceRestApi {
 	}
 
 	public function get_categories( WP_REST_Request $request ): WP_REST_Response|WP_Error {
-		$marketplace = sanitize_text_field( (string) ( $request->get_param( 'marketplace' ) ?: 'basalam' ) );
-
+		$marketplace_param = $request->get_param( 'marketplace' );
+		$marketplace       = sanitize_text_field( (string) ( $marketplace_param ? $marketplace_param : 'basalam' ) );
 		try {
 			$categories = $this->connections->get_categories( $marketplace );
 			return new WP_REST_Response( array( 'categories' => $categories ) );
@@ -267,12 +267,17 @@ final class MarketplaceRestApi {
 	}
 
 	public function list_products( WP_REST_Request $request ): WP_REST_Response {
-		$params = array(
-			'page'        => max( 1, (int) ( $request->get_param( 'page' ) ?: 1 ) ),
-			'per_page'    => max( 1, min( 100, (int) ( $request->get_param( 'per_page' ) ?: 20 ) ) ),
-			'search'      => sanitize_text_field( (string) ( $request->get_param( 'search' ) ?: '' ) ),
-			'status'      => sanitize_text_field( (string) ( $request->get_param( 'status' ) ?: '' ) ),
-			'marketplace' => sanitize_text_field( (string) ( $request->get_param( 'marketplace' ) ?: 'basalam' ) ),
+		$page_param        = $request->get_param( 'page' );
+		$per_page_param    = $request->get_param( 'per_page' );
+		$search_param      = $request->get_param( 'search' );
+		$status_param      = $request->get_param( 'status' );
+		$marketplace_param = $request->get_param( 'marketplace' );
+		$params            = array(
+			'page'        => max( 1, (int) ( $page_param ? $page_param : 1 ) ),
+			'per_page'    => max( 1, min( 100, (int) ( $per_page_param ? $per_page_param : 20 ) ) ),
+			'search'      => sanitize_text_field( (string) ( $search_param ? $search_param : '' ) ),
+			'status'      => sanitize_text_field( (string) ( $status_param ? $status_param : '' ) ),
+			'marketplace' => sanitize_text_field( (string) ( $marketplace_param ? $marketplace_param : 'basalam' ) ),
 		);
 
 		return new WP_REST_Response( $this->repository->list_publication_products( $params ) );
@@ -335,17 +340,24 @@ final class MarketplaceRestApi {
 
 		try {
 			$results = $this->publication->sync_stock_batch( array_map( 'intval', $product_ids ) );
-			return new WP_REST_Response( array( 'results' => $results, 'message' => 'همگام‌سازی موجودی انجام شد.' ) );
+			return new WP_REST_Response(
+				array(
+					'results' => $results,
+					'message' => 'همگام‌سازی موجودی انجام شد.',
+				)
+			);
 		} catch ( \Exception $e ) {
 			return new WP_Error( 'stockino_sync_stock_error', $e->getMessage(), array( 'status' => 400 ) );
 		}
 	}
 
 	public function get_logs( WP_REST_Request $request ): WP_REST_Response {
-		$page          = max( 1, (int) ( $request->get_param( 'page' ) ?: 1 ) );
-		$per_page      = max( 1, min( 100, (int) ( $request->get_param( 'per_page' ) ?: 20 ) ) );
-		$connection_id = $request->get_param( 'connection_id' ) ? (int) $request->get_param( 'connection_id' ) : null;
-		$product_id    = $request->get_param( 'product_id' ) ? (int) $request->get_param( 'product_id' ) : null;
+		$page_param     = $request->get_param( 'page' );
+		$per_page_param = $request->get_param( 'per_page' );
+		$page           = max( 1, (int) ( $page_param ? $page_param : 1 ) );
+		$per_page       = max( 1, min( 100, (int) ( $per_page_param ? $per_page_param : 20 ) ) );
+		$connection_id  = $request->get_param( 'connection_id' ) ? (int) $request->get_param( 'connection_id' ) : null;
+		$product_id     = $request->get_param( 'product_id' ) ? (int) $request->get_param( 'product_id' ) : null;
 
 		return new WP_REST_Response( $this->repository->get_logs( $page, $per_page, $connection_id, $product_id ) );
 	}

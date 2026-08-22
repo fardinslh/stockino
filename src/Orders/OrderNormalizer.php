@@ -29,27 +29,28 @@ final class OrderNormalizer {
 		$currency = (string) ( $raw['currency'] ?? 'IRT' );
 
 		// Customer
-		$customer_raw = is_array( $raw['customer'] ?? null ) ? $raw['customer'] : array();
-		$customer_name = (string) ( $customer_raw['name'] ?? $raw['customer_name'] ?? 'مشتری بازارگاه' );
+		$customer_raw   = is_array( $raw['customer'] ?? null ) ? $raw['customer'] : array();
+		$customer_name  = (string) ( $customer_raw['name'] ?? $raw['customer_name'] ?? 'مشتری بازارگاه' );
 		$customer_phone = (string) ( $customer_raw['phone'] ?? $raw['customer_phone'] ?? $raw['phone'] ?? '' );
 		$customer_email = (string) ( $customer_raw['email'] ?? $raw['customer_email'] ?? '' );
-		$customer = new CanonicalCustomer(
+		$customer       = new CanonicalCustomer(
 			isset( $customer_raw['id'] ) ? (string) $customer_raw['id'] : null,
 			$customer_name,
-			$customer_phone ?: null,
-			$customer_email ?: null,
+			$customer_phone ? $customer_phone : null,
+			$customer_email ? $customer_email : null,
 			isset( $customer_raw['national_id'] ) ? (string) $customer_raw['national_id'] : null
 		);
 
 		// Shipping Address
-		$addr_raw = is_array( $raw['shipping_address'] ?? null ) ? $raw['shipping_address'] : $customer_raw;
-		$first_name = (string) ( $addr_raw['first_name'] ?? ( explode( ' ', $customer_name )[0] ?? 'مشتری' ) );
-		$last_name  = (string) ( $addr_raw['last_name'] ?? ( substr( $customer_name, strlen( $first_name ) + 1 ) ?: 'بازارگاه' ) );
-		$address_1  = (string) ( $addr_raw['address_1'] ?? $addr_raw['address'] ?? $raw['address'] ?? '' );
-		$city       = (string) ( $addr_raw['city'] ?? $raw['city'] ?? 'تهران' );
-		$state      = (string) ( $addr_raw['state'] ?? $addr_raw['province'] ?? $raw['state'] ?? 'تهران' );
-		$postcode   = (string) ( $addr_raw['postcode'] ?? $addr_raw['postal_code'] ?? $raw['postal_code'] ?? '0000000000' );
-		$country    = (string) ( $addr_raw['country'] ?? 'IR' );
+		$addr_raw          = is_array( $raw['shipping_address'] ?? null ) ? $raw['shipping_address'] : $customer_raw;
+		$first_name        = (string) ( $addr_raw['first_name'] ?? ( explode( ' ', $customer_name )[0] ?? 'مشتری' ) );
+		$derived_last_name = substr( $customer_name, strlen( $first_name ) + 1 );
+		$last_name         = (string) ( $addr_raw['last_name'] ?? ( $derived_last_name ? $derived_last_name : 'بازارگاه' ) );
+		$address_1         = (string) ( $addr_raw['address_1'] ?? $addr_raw['address'] ?? $raw['address'] ?? '' );
+		$city              = (string) ( $addr_raw['city'] ?? $raw['city'] ?? 'تهران' );
+		$state             = (string) ( $addr_raw['state'] ?? $addr_raw['province'] ?? $raw['state'] ?? 'تهران' );
+		$postcode          = (string) ( $addr_raw['postcode'] ?? $addr_raw['postal_code'] ?? $raw['postal_code'] ?? '0000000000' );
+		$country           = (string) ( $addr_raw['country'] ?? 'IR' );
 
 		$shipping_address = new CanonicalAddress(
 			$first_name,
@@ -59,7 +60,7 @@ final class OrderNormalizer {
 			$state,
 			$postcode,
 			$country,
-			$customer_phone ?: null
+			$customer_phone ? $customer_phone : null
 		);
 
 		// Line Items

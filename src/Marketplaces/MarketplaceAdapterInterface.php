@@ -100,5 +100,3 @@ interface MarketplaceAdapterInterface {
 	 */
 	public function update_order_tracking( string $external_order_id, string $tracking_code, string $carrier = 'post' ): array;
 }
-
-

@@ -132,8 +132,7 @@ final class StockinoCliCommand {
 
 		global $wpdb;
 		$table = $wpdb->prefix . 'stockino_marketplace_products';
-		$ids   = $wpdb->get_col( "SELECT DISTINCT product_id FROM {$table} WHERE status = 'published' AND auto_sync_stock = 1" );
-
+		$ids   = $wpdb->get_col( $wpdb->prepare( "SELECT DISTINCT product_id FROM %i WHERE status = 'published' AND auto_sync_stock = 1", $table ) );
 		if ( empty( $ids ) ) {
 			\WP_CLI::line( 'No published products with auto-sync enabled.' );
 			return;

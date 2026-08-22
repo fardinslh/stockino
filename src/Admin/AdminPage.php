@@ -3,12 +3,12 @@
 namespace Stockino\Admin;
 
 final class AdminPage {
-	private string $inventory_hook    = '';
-	private string $supplier_hook     = '';
-	private string $purchasing_hook   = '';
-	private string $valuation_hook    = '';
-	private string $reorder_hook      = '';
-	private string $marketplace_hook  = '';
+	private string $inventory_hook   = '';
+	private string $supplier_hook    = '';
+	private string $purchasing_hook  = '';
+	private string $valuation_hook   = '';
+	private string $reorder_hook     = '';
+	private string $marketplace_hook = '';
 
 	public function register(): void {
 		add_action( 'admin_menu', array( $this, 'add_menu' ) );

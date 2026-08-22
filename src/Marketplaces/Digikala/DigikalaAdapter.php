@@ -31,11 +31,12 @@ final class DigikalaAdapter implements MarketplaceAdapterInterface {
 			throw new \InvalidArgumentException( 'کلید دسترسی API فروشندگان دیجی‌کالا وارد نشده است.' );
 		}
 
-		$response = $this->request( 'GET', '/seller/profile' );
-		$seller   = $response['data'] ?? array();
+		$response   = $this->request( 'GET', '/seller/profile' );
+		$seller     = $response['data'] ?? array();
+		$account_id = $seller['id'] ?? $this->seller_id;
 
 		return array(
-			'account_id'   => (string) ( $seller['id'] ?? $this->seller_id ?: 'dk_seller' ),
+			'account_id'   => (string) ( $account_id ? $account_id : 'dk_seller' ),
 			'account_name' => (string) ( $seller['title'] ?? $seller['name'] ?? 'فروشگاه دیجی‌کالا' ),
 			'identifier'   => (string) ( $seller['code'] ?? '' ),
 			'status'       => 'active',
@@ -48,9 +49,21 @@ final class DigikalaAdapter implements MarketplaceAdapterInterface {
 
 		if ( empty( $cats ) ) {
 			return array(
-				array( 'id' => 'dk_cat_1', 'label' => 'کالای دیجیتال', 'parentId' => null ),
-				array( 'id' => 'dk_cat_2', 'label' => 'مد و پوشاک', 'parentId' => null ),
-				array( 'id' => 'dk_cat_3', 'label' => 'خانه و آشپزخانه', 'parentId' => null ),
+				array(
+					'id'       => 'dk_cat_1',
+					'label'    => 'کالای دیجیتال',
+					'parentId' => null,
+				),
+				array(
+					'id'       => 'dk_cat_2',
+					'label'    => 'مد و پوشاک',
+					'parentId' => null,
+				),
+				array(
+					'id'       => 'dk_cat_3',
+					'label'    => 'خانه و آشپزخانه',
+					'parentId' => null,
+				),
 			);
 		}
 
@@ -107,20 +120,20 @@ final class DigikalaAdapter implements MarketplaceAdapterInterface {
 		$page     = (int) ( $params['page'] ?? 1 );
 		$per_page = (int) ( $params['per_page'] ?? 20 );
 
-		$res = $this->request( 'GET', "/seller/orders?page={$page}&size={$per_page}" );
+		$res    = $this->request( 'GET', "/seller/orders?page={$page}&size={$per_page}" );
 		$orders = $res['data']['orders'] ?? $res['data'] ?? array();
 
 		$normalized = array();
 		foreach ( ( is_array( $orders ) ? $orders : array() ) as $ord ) {
 			$normalized[] = array(
-				'id'              => (string) ( $ord['order_id'] ?? $ord['id'] ?? '' ),
-				'status'          => $ord['status'] ?? 'processing',
-				'total_amount'    => (float) ( $ord['total_price'] ?? $ord['price'] ?? 0 ),
-				'shipping_amount' => (float) ( $ord['shipping_cost'] ?? 0 ),
-				'discount_amount' => (float) ( $ord['discount'] ?? 0 ),
-				'currency'        => 'IRT',
-				'created_at'      => $ord['created_at'] ?? gmdate( 'Y-m-d H:i:s' ),
-				'customer'        => array(
+				'id'               => (string) ( $ord['order_id'] ?? $ord['id'] ?? '' ),
+				'status'           => $ord['status'] ?? 'processing',
+				'total_amount'     => (float) ( $ord['total_price'] ?? $ord['price'] ?? 0 ),
+				'shipping_amount'  => (float) ( $ord['shipping_cost'] ?? 0 ),
+				'discount_amount'  => (float) ( $ord['discount'] ?? 0 ),
+				'currency'         => 'IRT',
+				'created_at'       => $ord['created_at'] ?? gmdate( 'Y-m-d H:i:s' ),
+				'customer'         => array(
 					'id'    => (string) ( $ord['customer']['id'] ?? '' ),
 					'name'  => (string) ( $ord['customer']['name'] ?? 'مشتری دیجی‌کالا' ),
 					'phone' => (string) ( $ord['customer']['phone'] ?? '' ),
@@ -133,7 +146,7 @@ final class DigikalaAdapter implements MarketplaceAdapterInterface {
 					'state'      => (string) ( $ord['address']['state'] ?? 'تهران' ),
 					'postcode'   => (string) ( $ord['address']['postal_code'] ?? '0000000000' ),
 				),
-				'items' => array_map(
+				'items'            => array_map(
 					static fn( array $it ) => array(
 						'id'          => (string) ( $it['id'] ?? '' ),
 						'title'       => (string) ( $it['title'] ?? 'کالای دیجی‌کالا' ),
@@ -170,11 +183,11 @@ final class DigikalaAdapter implements MarketplaceAdapterInterface {
 	 */
 	private function format_digikala_payload( array $product ): array {
 		return array(
-			'seller_code'      => $product['model'] ?? null,
-			'price'            => max( 1000, (int) ( $product['price'] ?? 0 ) ),
-			'site_stock'       => max( 0, (int) ( $product['stock'] ?? 0 ) ),
-			'lead_time'        => (int) ( $product['preparation_days'] ?? 1 ),
-			'is_active'        => true,
+			'seller_code' => $product['model'] ?? null,
+			'price'       => max( 1000, (int) ( $product['price'] ?? 0 ) ),
+			'site_stock'  => max( 0, (int) ( $product['stock'] ?? 0 ) ),
+			'lead_time'   => (int) ( $product['preparation_days'] ?? 1 ),
+			'is_active'   => true,
 		);
 	}
 

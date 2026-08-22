@@ -57,10 +57,11 @@ final class CentralSyncEngine {
 
 			// 2. Sync inventory for all published products
 			global $wpdb;
-			$table = $wpdb->prefix . 'stockino_marketplace_products';
+			$table       = $wpdb->prefix . 'stockino_marketplace_products';
 			$product_ids = $wpdb->get_col(
 				$wpdb->prepare(
-					"SELECT product_id FROM {$table} WHERE marketplace = %s AND status = 'published' AND auto_sync_stock = 1",
+					"SELECT product_id FROM %i WHERE marketplace = %s AND status = 'published' AND auto_sync_stock = 1",
+					$table,
 					$marketplace
 				)
 			);
@@ -73,7 +74,8 @@ final class CentralSyncEngine {
 			// 3. Retry failed publications (up to 10)
 			$failed_ids = $wpdb->get_col(
 				$wpdb->prepare(
-					"SELECT product_id FROM {$table} WHERE marketplace = %s AND status = 'error' LIMIT 10",
+					"SELECT product_id FROM %i WHERE marketplace = %s AND status = 'error' LIMIT 10",
+					$table,
 					$marketplace
 				)
 			);
@@ -88,7 +90,10 @@ final class CentralSyncEngine {
 			StockinoEventDispatcher::dispatch(
 				new StockinoEvent(
 					StockinoEvent::INVENTORY_CHANGED,
-					array( 'marketplace' => $marketplace, 'count' => count( $inventory_results ) )
+					array(
+						'marketplace' => $marketplace,
+						'count'       => count( $inventory_results ),
+					)
 				)
 			);
 
@@ -104,7 +109,10 @@ final class CentralSyncEngine {
 			StockinoEventDispatcher::dispatch(
 				new StockinoEvent(
 					StockinoEvent::SYNC_FAILED,
-					array( 'marketplace' => $marketplace, 'error' => $e->getMessage() )
+					array(
+						'marketplace' => $marketplace,
+						'error'       => $e->getMessage(),
+					)
 				)
 			);
 

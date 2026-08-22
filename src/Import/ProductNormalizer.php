@@ -27,19 +27,19 @@ final class ProductNormalizer {
 		$currency      = trim( (string) ( $row['currency'] ?? 'IRT' ) );
 		$price         = new CanonicalPrice( $regular_price, $sale_price, $currency );
 
-		$quantity      = (float) ( $row['stock'] ?? $row['quantity'] ?? $row['stock_quantity'] ?? 0 );
-		$manage_stock  = ! isset( $row['manage_stock'] ) || in_array( strtolower( (string) $row['manage_stock'] ), array( '1', 'true', 'yes' ), true );
-		$stock_status  = $quantity > 0 ? 'instock' : 'outofstock';
-		$inventory     = new CanonicalInventory( $quantity, $manage_stock, $stock_status );
+		$quantity     = (float) ( $row['stock'] ?? $row['quantity'] ?? $row['stock_quantity'] ?? 0 );
+		$manage_stock = ! isset( $row['manage_stock'] ) || in_array( strtolower( (string) $row['manage_stock'] ), array( '1', 'true', 'yes' ), true );
+		$stock_status = $quantity > 0 ? 'instock' : 'outofstock';
+		$inventory    = new CanonicalInventory( $quantity, $manage_stock, $stock_status );
 
-		$weight_raw    = (float) ( $row['weight'] ?? $row['weight_grams'] ?? 250 );
-		$weight_grams  = $weight_raw > 0 ? ( $weight_raw < 10 ? (int) round( $weight_raw * 1000 ) : (int) round( $weight_raw ) ) : 250;
+		$weight_raw   = (float) ( $row['weight'] ?? $row['weight_grams'] ?? 250 );
+		$weight_grams = $weight_raw > 0 ? ( $weight_raw < 10 ? (int) round( $weight_raw * 1000 ) : (int) round( $weight_raw ) ) : 250;
 
-		$category_id   = isset( $row['category_id'] ) ? (string) $row['category_id'] : ( isset( $row['category'] ) ? (string) $row['category'] : null );
-		$brand         = isset( $row['brand'] ) ? (string) $row['brand'] : null;
+		$category_id = isset( $row['category_id'] ) ? (string) $row['category_id'] : ( isset( $row['category'] ) ? (string) $row['category'] : null );
+		$brand       = isset( $row['brand'] ) ? (string) $row['brand'] : null;
 
-		$images_raw    = (string) ( $row['images'] ?? $row['image_urls'] ?? $row['image'] ?? '' );
-		$image_urls    = array();
+		$images_raw = (string) ( $row['images'] ?? $row['image_urls'] ?? $row['image'] ?? '' );
+		$image_urls = array();
 		if ( '' !== trim( $images_raw ) ) {
 			$delimiter  = str_contains( $images_raw, '|' ) ? '|' : ( str_contains( $images_raw, ';' ) ? ';' : ',' );
 			$image_urls = array_values( array_filter( array_map( 'trim', explode( $delimiter, $images_raw ) ) ) );
@@ -48,7 +48,7 @@ final class ProductNormalizer {
 		$attributes = array();
 		foreach ( $row as $key => $val ) {
 			if ( str_starts_with( $key, 'attr_' ) || str_starts_with( $key, 'attribute_' ) ) {
-				$attr_name = substr( $key, str_starts_with( $key, 'attr_' ) ? 5 : 10 );
+				$attr_name                = substr( $key, str_starts_with( $key, 'attr_' ) ? 5 : 10 );
 				$attributes[ $attr_name ] = trim( (string) $val );
 			}
 		}

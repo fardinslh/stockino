@@ -105,14 +105,14 @@ final class MockMarketplaceAdapter implements MarketplaceAdapterInterface {
 
 		return array(
 			array(
-				'id'              => 'mock_order_1001',
-				'status'          => 'processing',
-				'total_amount'    => 285000,
-				'shipping_amount' => 35000,
-				'discount_amount' => 0,
-				'currency'        => 'IRT',
-				'created_at'      => gmdate( 'Y-m-d H:i:s', time() - 3600 ),
-				'customer'        => array(
+				'id'               => 'mock_order_1001',
+				'status'           => 'processing',
+				'total_amount'     => 285000,
+				'shipping_amount'  => 35000,
+				'discount_amount'  => 0,
+				'currency'         => 'IRT',
+				'created_at'       => gmdate( 'Y-m-d H:i:s', time() - 3600 ),
+				'customer'         => array(
 					'id'    => 'cust_901',
 					'name'  => 'سارا رضایی',
 					'phone' => '09123456789',
@@ -127,7 +127,7 @@ final class MockMarketplaceAdapter implements MarketplaceAdapterInterface {
 					'postcode'   => '1458963214',
 					'phone'      => '09123456789',
 				),
-				'items' => array(
+				'items'            => array(
 					array(
 						'id'          => 'item_101',
 						'title'       => 'محصول تست استوکینو',

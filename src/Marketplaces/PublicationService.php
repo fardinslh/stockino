@@ -59,7 +59,7 @@ final class PublicationService {
 				array(
 					'connection_id'        => $conn_id,
 					'product_id'           => $product_id,
-					'parent_id'            => $product->get_parent_id() ?: null,
+					'parent_id'            => $product->get_parent_id() ? $product->get_parent_id() : null,
 					'marketplace'          => $marketplace,
 					'external_product_id'  => $external_product_id,
 					'category_external_id' => $category_id,
@@ -138,8 +138,8 @@ final class PublicationService {
 			return array();
 		}
 
-		$stock = null !== $new_quantity ? (float) $new_quantity : (float) ( $product->get_stock_quantity() ?? 0 );
-		$links = $this->repository->get_published_links_for_product( $product_id );
+		$stock   = null !== $new_quantity ? (float) $new_quantity : (float) ( $product->get_stock_quantity() ?? 0 );
+		$links   = $this->repository->get_published_links_for_product( $product_id );
 		$results = array();
 
 		foreach ( $links as $link ) {
@@ -225,7 +225,9 @@ final class PublicationService {
 	 * @return array<string, mixed>
 	 */
 	private function map_product( WC_Product $product, string $category_id, int $preparation_days, array $options = array() ): array {
-		$price = (float) ( $product->get_price() ?: ( $product->get_regular_price() ?: '0' ) );
+		$price         = $product->get_price();
+		$regular_price = $product->get_regular_price();
+		$price         = (float) ( $price ? $price : ( $regular_price ? $regular_price : '0' ) );
 		// Basalam uses Toman integers
 		$price_toman = max( 1000, (int) round( $price ) );
 
@@ -251,7 +253,7 @@ final class PublicationService {
 			'price'                => isset( $options['price'] ) ? (int) $options['price'] : $price_toman,
 			'stock'                => max( 0, (int) ( $product->get_stock_quantity() ?? 0 ) ),
 			'weight_grams'         => isset( $options['weight_grams'] ) ? (int) $options['weight_grams'] : $weight_grams,
-			'model'                => $product->get_sku() ?: (string) $product->get_id(),
+			'model'                => $product->get_sku() ? $product->get_sku() : (string) $product->get_id(),
 			'preparation_days'     => $preparation_days,
 		);
 	}

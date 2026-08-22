@@ -54,6 +54,7 @@ final class XlsxProductImporter implements ProductImportInterface {
 		}
 
 		$xml = simplexml_load_string( $sheet_xml );
+		// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- OOXML element name.
 		if ( ! $xml || ! isset( $xml->sheetData->row ) ) {
 			return array();
 		}
@@ -61,8 +62,9 @@ final class XlsxProductImporter implements ProductImportInterface {
 		$rows_data = array();
 		$row_count = 0;
 
+		// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- OOXML element name.
 		foreach ( $xml->sheetData->row as $row ) {
-			$row_count++;
+			++$row_count;
 			if ( $row_count > self::MAX_ROWS + 1 ) {
 				break;
 			}

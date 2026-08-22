@@ -32,10 +32,10 @@ final class MarketplaceConnectionService {
 			);
 			$this->repository->save_connection(
 				array(
-					'marketplace'       => 'basalam',
-					'name'              => 'بازارگاه باسلام',
-					'status'            => 'disconnected',
-					'preparation_days'  => 1,
+					'marketplace'      => 'basalam',
+					'name'             => 'بازارگاه باسلام',
+					'status'           => 'disconnected',
+					'preparation_days' => 1,
 				)
 			);
 			$connections = $this->repository->get_connections();
@@ -47,7 +47,7 @@ final class MarketplaceConnectionService {
 				if ( ! empty( $conn['credentials'] ) ) {
 					$creds = json_decode( (string) $conn['credentials'], true );
 					if ( is_array( $creds ) && ! empty( $creds['access_token'] ) ) {
-						$token = (string) $creds['access_token'];
+						$token                        = (string) $creds['access_token'];
 						$creds['access_token_masked'] = strlen( $token ) > 8
 							? substr( $token, 0, 4 ) . '...' . substr( $token, -4 )
 							: '***';
@@ -109,7 +109,7 @@ final class MarketplaceConnectionService {
 			if ( ! empty( $connection['credentials'] ) ) {
 				$creds = json_decode( (string) $connection['credentials'], true );
 				if ( is_array( $creds ) && ! empty( $creds['access_token'] ) ) {
-					$token = (string) $creds['access_token'];
+					$token                        = (string) $creds['access_token'];
 					$creds['access_token_masked'] = strlen( $token ) > 8
 						? substr( $token, 0, 4 ) . '...' . substr( $token, -4 )
 						: '***';

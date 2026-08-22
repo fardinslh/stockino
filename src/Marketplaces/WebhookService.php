@@ -28,13 +28,12 @@ final class WebhookService {
 	 * @return array{status: string, message: string}
 	 */
 	public function handle_webhook( string $marketplace, array $payload, string $signature = '' ): array {
-		$conn    = $this->repository->get_connection_by_marketplace( $marketplace );
-		$conn_id = $conn ? (int) $conn['id'] : 0;
-
 		$event_type = (string) ( $payload['event'] ?? $payload['type'] ?? 'unknown' );
 
 		// If order created or updated
 		if ( str_contains( $event_type, 'order' ) || isset( $payload['order'] ) || isset( $payload['order_id'] ) ) {
+			$conn       = $this->repository->get_connection_by_marketplace( $marketplace );
+			$conn_id    = $conn ? (int) $conn['id'] : 0;
 			$order_data = isset( $payload['order'] ) && is_array( $payload['order'] ) ? $payload['order'] : $payload;
 			try {
 				$normalizer = new \Stockino\Orders\OrderNormalizer();
@@ -44,7 +43,10 @@ final class WebhookService {
 				StockinoEventDispatcher::dispatch(
 					new StockinoEvent(
 						StockinoEvent::ORDER_CREATED,
-						array( 'marketplace' => $marketplace, 'wc_order_id' => $sync_res['wc_order_id'] )
+						array(
+							'marketplace' => $marketplace,
+							'wc_order_id' => $sync_res['wc_order_id'],
+						)
 					)
 				);
 

@@ -17,21 +17,21 @@ final class MarketplaceRepository {
 	/** @return array<int, array<string, mixed>> */
 	public function get_connections(): array {
 		global $wpdb;
-		$rows = $wpdb->get_results( "SELECT * FROM {$this->connections_table} ORDER BY id ASC", ARRAY_A );
+		$rows = $wpdb->get_results( $wpdb->prepare( 'SELECT * FROM %i ORDER BY id ASC', $this->connections_table ), ARRAY_A );
 		return is_array( $rows ) ? $rows : array();
 	}
 
 	/** @return array<string, mixed>|null */
 	public function get_connection( int $id ): ?array {
 		global $wpdb;
-		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$this->connections_table} WHERE id = %d", $id ), ARRAY_A );
+		$row = $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM %i WHERE id = %d', $this->connections_table, $id ), ARRAY_A );
 		return is_array( $row ) ? $row : null;
 	}
 
 	/** @return array<string, mixed>|null */
 	public function get_connection_by_marketplace( string $marketplace ): ?array {
 		global $wpdb;
-		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$this->connections_table} WHERE marketplace = %s", $marketplace ), ARRAY_A );
+		$row = $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM %i WHERE marketplace = %s', $this->connections_table, $marketplace ), ARRAY_A );
 		return is_array( $row ) ? $row : null;
 	}
 
@@ -94,7 +94,7 @@ final class MarketplaceRepository {
 
 	public function update_connection_status( int $id, string $status, ?string $vendor_id = null, ?string $vendor_name = null, ?string $vendor_identifier = null ): void {
 		global $wpdb;
-		$fields = array(
+		$fields  = array(
 			'status'     => $status,
 			'updated_at' => gmdate( 'Y-m-d H:i:s' ),
 		);
@@ -127,7 +127,8 @@ final class MarketplaceRepository {
 		global $wpdb;
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
-				"SELECT * FROM {$this->products_table} WHERE connection_id = %d AND product_id = %d",
+				'SELECT * FROM %i WHERE connection_id = %d AND product_id = %d',
+				$this->products_table,
 				$connection_id,
 				$product_id
 			),
@@ -141,7 +142,9 @@ final class MarketplaceRepository {
 		global $wpdb;
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT p.*, c.marketplace as marketplace_kind, c.credentials, c.vendor_id as conn_vendor_id, c.preparation_days, c.status as conn_status FROM {$this->products_table} p INNER JOIN {$this->connections_table} c ON p.connection_id = c.id WHERE p.product_id = %d AND p.status = 'published' AND c.status = 'active'",
+				"SELECT p.*, c.marketplace as marketplace_kind, c.credentials, c.vendor_id as conn_vendor_id, c.preparation_days, c.status as conn_status FROM %i p INNER JOIN %i c ON p.connection_id = c.id WHERE p.product_id = %d AND p.status = 'published' AND c.status = 'active'",
+				$this->products_table,
+				$this->connections_table,
 				$product_id
 			),
 			ARRAY_A
@@ -298,12 +301,19 @@ final class MarketplaceRepository {
 		}
 
 		$count_sql = "SELECT COUNT(DISTINCT p.ID) FROM {$posts_table} p {$join} {$where}";
-		$total     = (int) ( ! empty( $args ) ? $wpdb->get_var( $wpdb->prepare( $count_sql, $args ) ) : $wpdb->get_var( $count_sql ) );
+		if ( ! empty( $args ) ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query uses trusted table names and fixed clauses; all values are prepared.
+			$total = (int) $wpdb->get_var( $wpdb->prepare( $count_sql, $args ) );
+		} else {
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query contains only trusted table names and fixed clauses.
+			$total = (int) $wpdb->get_var( $count_sql );
+		}
 
-		$query_sql = "SELECT p.ID as product_id, p.post_title as product_name, p.post_parent as parent_id, p.post_type, mp.id as link_id, mp.marketplace, mp.status as publication_status, mp.external_product_id, mp.category_external_id, mp.auto_sync_stock, mp.last_published_at, mp.last_synced_at, mp.last_error_message FROM {$posts_table} p {$join} {$where} ORDER BY p.ID DESC LIMIT %d OFFSET %d";
-		$query_args   = array_merge( $args, array( $per_page, $offset ) );
-		$rows         = $wpdb->get_results( $wpdb->prepare( $query_sql, $query_args ), ARRAY_A );
-		$items        = array();
+		$query_sql  = "SELECT p.ID as product_id, p.post_title as product_name, p.post_parent as parent_id, p.post_type, mp.id as link_id, mp.marketplace, mp.status as publication_status, mp.external_product_id, mp.category_external_id, mp.auto_sync_stock, mp.last_published_at, mp.last_synced_at, mp.last_error_message FROM {$posts_table} p {$join} {$where} ORDER BY p.ID DESC LIMIT %d OFFSET %d";
+		$query_args = array_merge( $args, array( $per_page, $offset ) );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query uses trusted table names and fixed clauses; all values are prepared.
+		$rows  = $wpdb->get_results( $wpdb->prepare( $query_sql, $query_args ), ARRAY_A );
+		$items = array();
 
 		foreach ( ( is_array( $rows ) ? $rows : array() ) as $row ) {
 			$wc_product = wc_get_product( (int) $row['product_id'] );
@@ -332,27 +342,23 @@ final class MarketplaceRepository {
 			);
 		}
 
-		return array(
-			'items'        => $items,
-			'total'        => $total,
-			'total_items'  => $total,
-			'page'         => $page,
-			'current_page' => $page,
-			'per_page'     => $per_page,
-			'total_pages'  => max( 1, (int) ceil( $total / $per_page ) ),
-		);
+			return array(
+				'items'        => $items,
+				'total'        => $total,
+				'total_items'  => $total,
+				'page'         => $page,
+				'current_page' => $page,
+				'per_page'     => $per_page,
+				'total_pages'  => max( 1, (int) ceil( $total / $per_page ) ),
+			);
 	}
 
 	/** @return array{total: int, published: int, not_published: int, in_progress: int, failed: int} */
 	public function get_stats(): array {
 		global $wpdb;
 		$posts_table = $wpdb->posts;
-		$total_wc    = (int) $wpdb->get_var( "SELECT COUNT(ID) FROM {$posts_table} WHERE post_type IN ('product', 'product_variation') AND post_status = 'publish'" );
-
-		$counts = $wpdb->get_results(
-			"SELECT status, COUNT(*) as count FROM {$this->products_table} GROUP BY status",
-			ARRAY_A
-		);
+		$total_wc    = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(ID) FROM %i WHERE post_type IN ('product', 'product_variation') AND post_status = 'publish'", $posts_table ) );
+		$counts      = $wpdb->get_results( $wpdb->prepare( 'SELECT status, COUNT(*) as count FROM %i GROUP BY status', $this->products_table ), ARRAY_A );
 
 		$stats = array(
 			'total'         => $total_wc,
@@ -424,11 +430,18 @@ final class MarketplaceRepository {
 		}
 
 		$count_sql = "SELECT COUNT(*) FROM {$this->logs_table} l {$where}";
-		$total     = (int) ( ! empty( $args ) ? $wpdb->get_var( $wpdb->prepare( $count_sql, $args ) ) : $wpdb->get_var( $count_sql ) );
+		if ( ! empty( $args ) ) {
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query uses trusted table names and fixed clauses; all values are prepared.
+			$total = (int) $wpdb->get_var( $wpdb->prepare( $count_sql, $args ) );
+		} else {
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query contains only trusted table names and fixed clauses.
+			$total = (int) $wpdb->get_var( $count_sql );
+		}
 
 		$query_sql  = "SELECT l.*, c.marketplace, c.name as connection_name, p.post_title as product_name FROM {$this->logs_table} l LEFT JOIN {$this->connections_table} c ON l.connection_id = c.id LEFT JOIN {$wpdb->posts} p ON l.product_id = p.ID {$where} ORDER BY l.id DESC LIMIT %d OFFSET %d";
 		$query_args = array_merge( $args, array( $per_page, $offset ) );
-		$rows       = $wpdb->get_results( $wpdb->prepare( $query_sql, $query_args ), ARRAY_A );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Query uses trusted table names and fixed clauses; all values are prepared.
+		$rows = $wpdb->get_results( $wpdb->prepare( $query_sql, $query_args ), ARRAY_A );
 
 		return array(
 			'items'        => is_array( $rows ) ? $rows : array(),

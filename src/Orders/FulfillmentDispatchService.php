@@ -41,12 +41,16 @@ final class FulfillmentDispatchService {
 		}
 
 		// Look for tracking code from Orderino or WooCommerce meta
-		$tracking = (string) (
-			$order->get_meta( '_orderino_tracking_code' )
-			?: ( $order->get_meta( '_shipping_tracking_number' )
-			?: ( $order->get_meta( 'tracking_code' ) ?: 'TRACK-' . $order_id ) )
-		);
-
+		$tracking = (string) $order->get_meta( '_orderino_tracking_code' );
+		if ( ! $tracking ) {
+			$tracking = (string) $order->get_meta( '_shipping_tracking_number' );
+		}
+		if ( ! $tracking ) {
+			$tracking = (string) $order->get_meta( 'tracking_code' );
+		}
+		if ( ! $tracking ) {
+			$tracking = 'TRACK-' . $order_id;
+		}
 		$this->dispatch_fulfillment( $order, $marketplace, $ext_id, $tracking );
 	}
 

@@ -38,7 +38,7 @@ final class BasalamAdapter implements MarketplaceAdapterInterface {
 			throw new \InvalidArgumentException( 'توکن دسترسی باسلام الزامی است.' );
 		}
 
-		$whoami = $this->request( 'GET', '/v1/whoami' );
+		$whoami  = $this->request( 'GET', '/v1/whoami' );
 		$user_id = $whoami['token']['user_id'] ?? null;
 
 		if ( ! $user_id ) {
@@ -116,7 +116,7 @@ final class BasalamAdapter implements MarketplaceAdapterInterface {
 		$vendor_id = $this->get_effective_vendor_id();
 		$payload   = $this->build_product_payload( $product );
 
-		$response = $this->request( 'POST', "/v1/vendors/{$vendor_id}/products", $payload );
+		$response    = $this->request( 'POST', "/v1/vendors/{$vendor_id}/products", $payload );
 		$external_id = (string) ( $response['id'] ?? $response['data']['id'] ?? '' );
 
 		if ( '' === $external_id ) {
@@ -231,7 +231,7 @@ final class BasalamAdapter implements MarketplaceAdapterInterface {
 			return $this->vendor_id;
 		}
 
-		$conn = $this->validate_connection();
+		$conn            = $this->validate_connection();
 		$this->vendor_id = $conn['account_id'];
 		return $this->vendor_id;
 	}

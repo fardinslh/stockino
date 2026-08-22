@@ -35,8 +35,8 @@ final class RetryPolicy {
 				}
 
 				// Check if error is retryable (429 rate limit or 5xx server error or network timeout)
-				$msg = $e->getMessage();
-				$code = $e->getCode();
+				$msg          = $e->getMessage();
+				$code         = $e->getCode();
 				$is_retryable = ( 429 === $code || ( $code >= 500 && $code < 600 ) || str_contains( $msg, '429' ) || str_contains( $msg, 'timeout' ) || str_contains( $msg, 'timed out' ) );
 
 				if ( ! $is_retryable && 0 !== $code ) {
@@ -48,7 +48,7 @@ final class RetryPolicy {
 				}
 
 				// Exponential backoff with small random jitter
-				$jitter = (int) wp_rand( 50, 150 );
+				$jitter   = (int) wp_rand( 50, 150 );
 				$sleep_ms = (int) round( $delay_ms + $jitter );
 				usleep( $sleep_ms * 1000 );
 

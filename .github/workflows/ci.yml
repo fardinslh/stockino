@@ -75,7 +75,7 @@ jobs:
 
       - name: Check for Unresolved Conflict Markers
         run: |
-          if git grep -nE '<<<<<<<|=======|>>>>>>>' -- ':!tests/' ':!.github/'; then
+          if git grep -nE '^[[:space:]]*(<<<<<<<|=======|>>>>>>>)' -- ':!tests/' ':!.github/'; then
             echo "::error::Unresolved merge conflict markers found in repository!"
             exit 1
           else

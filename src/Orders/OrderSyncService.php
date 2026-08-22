@@ -65,11 +65,14 @@ final class OrderSyncService {
 
 				$synced_orders[] = array_merge(
 					$canonical->to_array(),
-					array( 'wc_order_id' => $result['wc_order_id'], 'action' => $result['action'] )
+					array(
+						'wc_order_id' => $result['wc_order_id'],
+						'action'      => $result['action'],
+					)
 				);
 			} catch ( \Exception $e ) {
 				++$failed_count;
-				$ext_id = (string) ( $raw['id'] ?? $raw['order_id'] ?? 'unknown' );
+				$ext_id   = (string) ( $raw['id'] ?? $raw['order_id'] ?? 'unknown' );
 				$errors[] = array(
 					'external_order_id' => $ext_id,
 					'error'             => $e->getMessage(),
@@ -104,7 +107,10 @@ final class OrderSyncService {
 	 */
 	public function sync_canonical_order( CanonicalOrder $order, int $conn_id = 0 ): array {
 		if ( ! function_exists( 'wc_create_order' ) ) {
-			return array( 'action' => 'skipped', 'wc_order_id' => 0 );
+			return array(
+				'action'      => 'skipped',
+				'wc_order_id' => 0,
+			);
 		}
 
 		$existing_order_id = $this->find_existing_wc_order_id( $order->external_order_id, $order->marketplace );
@@ -117,7 +123,10 @@ final class OrderSyncService {
 					$wc_order->set_status( $wc_status, sprintf( 'تغییر وضعیت از بازارگاه %s به %s', $order->marketplace, $order->status ) );
 					$wc_order->save();
 				}
-				return array( 'action' => 'updated', 'wc_order_id' => $existing_order_id );
+				return array(
+					'action'      => 'updated',
+					'wc_order_id' => $existing_order_id,
+				);
 			}
 		}
 
@@ -168,7 +177,7 @@ final class OrderSyncService {
 		// Add Shipping item if applicable
 		if ( $order->shipping_amount > 0 ) {
 			$shipping_item = new WC_Order_Item_Shipping();
-			$shipping_item->set_method_title( $order->shipping_method ?: 'ارسال بازارگاه' );
+			$shipping_item->set_method_title( $order->shipping_method ? $order->shipping_method : 'ارسال بازارگاه' );
 			$shipping_item->set_total( (string) $order->shipping_amount );
 			$wc_order->add_item( $shipping_item );
 		}
@@ -221,14 +230,15 @@ final class OrderSyncService {
 
 		do_action( 'stockino_order_synced', $wc_order_id, $order );
 
-		return array( 'action' => 'created', 'wc_order_id' => $wc_order_id );
+		return array(
+			'action'      => 'created',
+			'wc_order_id' => $wc_order_id,
+		);
 	}
 
 	private function find_existing_wc_order_id( string $external_order_id, string $marketplace ): int {
 		global $wpdb;
-		$sql = "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_stockino_marketplace_order_id' AND meta_value = %s LIMIT 1";
-		$id  = $wpdb->get_var( $wpdb->prepare( $sql, $external_order_id ) );
-
+		$id = $wpdb->get_var( $wpdb->prepare( 'SELECT post_id FROM %i WHERE meta_key = %s AND meta_value = %s LIMIT 1', $wpdb->postmeta, '_stockino_marketplace_order_id', $external_order_id ) );
 		if ( $id ) {
 			return (int) $id;
 		}
@@ -236,8 +246,7 @@ final class OrderSyncService {
 		// Also check WooCommerce HPOS table if active
 		$hpos_table = $wpdb->prefix . 'wc_orders_meta';
 		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $hpos_table ) ) === $hpos_table ) {
-			$hpos_sql = "SELECT order_id FROM {$hpos_table} WHERE meta_key = '_stockino_marketplace_order_id' AND meta_value = %s LIMIT 1";
-			$hpos_id  = $wpdb->get_var( $wpdb->prepare( $hpos_sql, $external_order_id ) );
+			$hpos_id = $wpdb->get_var( $wpdb->prepare( 'SELECT order_id FROM %i WHERE meta_key = %s AND meta_value = %s LIMIT 1', $hpos_table, '_stockino_marketplace_order_id', $external_order_id ) );
 			if ( $hpos_id ) {
 				return (int) $hpos_id;
 			}

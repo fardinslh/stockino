@@ -32,7 +32,7 @@ final class TorobAdapter implements MarketplaceAdapterInterface {
 		}
 
 		return array(
-			'account_id'   => $this->shop_id ?: 'torob_shop',
+			'account_id'   => $this->shop_id ? $this->shop_id : 'torob_shop',
 			'account_name' => 'فروشگاه ترب',
 			'identifier'   => $this->shop_id,
 			'status'       => 'active',
@@ -41,7 +41,11 @@ final class TorobAdapter implements MarketplaceAdapterInterface {
 
 	public function get_categories(): array {
 		return array(
-			array( 'id' => 'torob_all', 'label' => 'تمام دسته‌بندی‌های ترب', 'parentId' => null ),
+			array(
+				'id'       => 'torob_all',
+				'label'    => 'تمام دسته‌بندی‌های ترب',
+				'parentId' => null,
+			),
 		);
 	}
 

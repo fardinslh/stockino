@@ -55,6 +55,8 @@ final class StructuredLogger {
 			'context'    => $context,
 		);
 
+		$encoded_payload = wp_json_encode( $payload );
+
 		if ( $this->repository ) {
 			$this->repository->add_log(
 				$connection_id,
@@ -62,12 +64,12 @@ final class StructuredLogger {
 				$action,
 				$status,
 				$message,
-				wp_json_encode( $payload ) ?: null
+				$encoded_payload ? $encoded_payload : null
 			);
 		}
 
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG && defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) {
-			error_log( sprintf( '[Stockino][%s][%s] %s %s', $data['marketplace'], $action, $message, wp_json_encode( $payload ) ) );
+			error_log( sprintf( '[Stockino][%s][%s] %s %s', $data['marketplace'], $action, $message, $encoded_payload ) );
 		}
 	}
 

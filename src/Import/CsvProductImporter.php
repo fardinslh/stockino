@@ -45,7 +45,7 @@ final class CsvProductImporter implements ProductImportInterface {
 				continue;
 			}
 
-			$count++;
+			++$count;
 			if ( $count > self::MAX_ROWS ) {
 				break;
 			}

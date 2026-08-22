@@ -12,6 +12,8 @@ use Stockino\Orders\OrderSyncService;
 
 final class WebhookServiceTest extends TestCase {
 	public function test_webhook_service_ignores_unrelated_events(): void {
+		$GLOBALS['wpdb'] = (object) array( 'prefix' => 'wp_' );
+
 		$repo       = new MarketplaceRepository();
 		$conn       = new MarketplaceConnectionService( $repo );
 		$order_sync = new OrderSyncService( $repo, $conn );

@@ -67,16 +67,22 @@ final class ImportPipelineService {
 
 			if ( ! $validation['is_valid'] ) {
 				foreach ( $validation['errors'] as $err ) {
-					$errors[] = array( 'row' => $row_num, 'error' => $err );
+					$errors[] = array(
+						'row'   => $row_num,
+						'error' => $err,
+					);
 				}
 				continue;
 			}
 
 			try {
-				$canonical = $this->normalizer->normalize_row( $row );
+				$canonical        = $this->normalizer->normalize_row( $row );
 				$valid_products[] = $canonical;
 			} catch ( \Exception $e ) {
-				$errors[] = array( 'row' => $row_num, 'error' => $e->getMessage() );
+				$errors[] = array(
+					'row'   => $row_num,
+					'error' => $e->getMessage(),
+				);
 			}
 		}
 
